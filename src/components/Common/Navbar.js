@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -11,6 +11,7 @@ import {
   IconButton,
   Chip,
   Avatar,
+  Badge,
 } from '@mui/material';
 import {
   Event as EventIcon,
@@ -23,9 +24,11 @@ import {
   CalendarMonth as ScheduleIcon,
   AccountCircle as AccountIcon,
   Logout as LogoutIcon,
+  Message as MessageIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import AuthDialog from '../Account/AuthDialog';
+import { getUnreadThreadCount, listenToUserThreads } from '../../services/enhancedMessagingService';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -45,9 +48,33 @@ const Navbar = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [accountMenuAnchor, setAccountMenuAnchor] = useState(null);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Listen to unread message count
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0);
+      return;
+    }
+
+    // Initial load
+    getUnreadThreadCount(user.uid).then(count => setUnreadCount(count));
+
+    // Real-time listener
+    const unsubscribe = listenToUserThreads(user.uid, (threads) => {
+      const unread = threads.filter(t => {
+        const userUnread = t.unreadCount?.[user.uid] || 0;
+        return userUnread > 0 && t.status === 'open';
+      }).length;
+      setUnreadCount(unread);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const navigationItems = [
     { path: '/events', label: 'Events', icon: <EventIcon /> },
+    { path: '/messages', label: 'Messages', icon: <MessageIcon />, badge: unreadCount },
     { path: '/timeline', label: 'Timeline', icon: <TimelineIcon /> },
     { path: '/orders', label: 'Orders', icon: <ShippingIcon /> },
     { path: '/shipments', label: 'Shipments', icon: <ShippingIcon /> },
@@ -119,19 +146,20 @@ const Navbar = () => {
               width: 40,
               height: 40,
               borderRadius: 2,
-              background: 'linear-gradient(135deg, #00d4ff 0%, #ff6b9d 100%)',
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '2px solid rgba(255, 255, 255, 0.2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               mr: 1.5,
-              boxShadow: '0 4px 20px rgba(0, 212, 255, 0.3)',
               transition: 'all 0.2s ease-in-out',
               '&:hover': {
-                boxShadow: '0 6px 25px rgba(0, 212, 255, 0.5)',
+                background: 'rgba(255, 255, 255, 0.15)',
+                borderColor: 'rgba(255, 255, 255, 0.3)',
               },
             }}
           >
-            <Typography variant="h6" sx={{ fontWeight: 800, color: '#0a0a0a' }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, color: 'white' }}>
               O
             </Typography>
           </Box>
@@ -140,9 +168,7 @@ const Navbar = () => {
             component="div"
             sx={{
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #00d4ff 0%, #ff6b9d 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
+              color: 'white',
               letterSpacing: '-0.02em',
             }}
           >
@@ -153,10 +179,16 @@ const Navbar = () => {
         <Box sx={{ flexGrow: 1, display: 'flex', gap: 0.5 }}>
           {navigationItems.map((item) => {
             const isActive = location.pathname === item.path;
+            const buttonIcon = item.badge > 0 ? (
+              <Badge badgeContent={item.badge} color="error">
+                {item.icon}
+              </Badge>
+            ) : item.icon;
+
             return (
               <Button
                 key={item.path}
-                startIcon={item.icon}
+                startIcon={buttonIcon}
                 onClick={() => navigate(item.path)}
                 sx={{
                   color: isActive ? '#00d4ff' : 'rgba(255, 255, 255, 0.7)',

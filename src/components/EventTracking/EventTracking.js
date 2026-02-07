@@ -35,19 +35,27 @@ import {
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as UncompletedIcon,
   Timeline as TimelineIcon,
+  Share as ShareIcon,
+  MoreVert as MoreIcon,
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
 import { useAuth } from '../../context/AuthContext';
+import EventSharing from '../EventSharing/EventSharing';
+import { getUserEventRole } from '../../services/accessControlService';
+import { PERMISSIONS, hasEventPermission } from '../../utils/roleConstants';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 const EventTracking = () => {
   const { events, addEvent, updateEvent, setLoading } = useAppState();
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const navigate = useNavigate();
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const [eventToShare, setEventToShare] = useState(null);
   const [tabValue, setTabValue] = useState(0);
+  const [eventRoles, setEventRoles] = useState({});
   const [newEvent, setNewEvent] = useState({
     name: '',
     description: '',
@@ -60,6 +68,29 @@ const EventTracking = () => {
 
   const eventStatuses = ['Planning', 'Confirmed', 'In Progress', 'Completed', 'Cancelled'];
   const eventCategories = ['Conference', 'Workshop', 'Concert', 'Sports', 'Exhibition', 'Other'];
+
+  // Load event roles for all events
+  useEffect(() => {
+    const loadEventRoles = async () => {
+      if (!user || !events.length) return;
+
+      const roles = {};
+      for (const event of events) {
+        const role = await getUserEventRole(event.id, user.uid, userRole);
+        roles[event.id] = role;
+      }
+      setEventRoles(roles);
+    };
+
+    loadEventRoles();
+  }, [events, user, userRole]);
+
+  // Helper to check if user can share an event
+  const canShareEvent = (eventId) => {
+    const role = eventRoles[eventId];
+    if (!role) return false;
+    return hasEventPermission(role, PERMISSIONS.EVENT_SHARE);
+  };
 
   const handleCreateEvent = async () => {
     if (!user) {
@@ -183,7 +214,21 @@ const EventTracking = () => {
           </Box>
         </Box>
 
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+          {canShareEvent(event.id) && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ShareIcon />}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEventToShare(event);
+                setSharingOpen(true);
+              }}
+            >
+              Share
+            </Button>
+          )}
           <Button
             variant="outlined"
             size="small"
@@ -616,6 +661,19 @@ const EventTracking = () => {
       >
         <AddIcon />
       </Fab>
+
+      {/* Event Sharing Dialog */}
+      <EventSharing
+        open={sharingOpen}
+        onClose={() => {
+          setSharingOpen(false);
+          setEventToShare(null);
+        }}
+        event={eventToShare}
+        onUpdate={() => {
+          // Event data will refresh automatically via AppStateContext
+        }}
+      />
     </Container>
   );
 };

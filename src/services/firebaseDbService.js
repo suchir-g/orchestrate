@@ -226,6 +226,20 @@ export const listenToUserEvents = (userId, callback) => {
   return listenToCollection(COLLECTIONS.EVENTS, [where('createdBy', '==', userId)], callback);
 };
 
+// Create event with collaboration fields
+export const createEventWithCollaboration = async (eventData, userId) => {
+  const eventWithCollaboration = {
+    ...eventData,
+    createdBy: userId,
+    organizers: [userId], // Creator is automatically an organizer
+    collaborators: [], // Empty initially, can be added later
+    volunteers: [],
+    sponsors: [],
+    visibility: eventData.visibility || 'private', // Default to private
+  };
+  return createDocument(COLLECTIONS.EVENTS, eventWithCollaboration);
+};
+
 // Orders (user-scoped)
 export const createOrder = (orderData) => createDocument(COLLECTIONS.ORDERS, orderData);
 export const getOrder = (orderId) => getDocument(COLLECTIONS.ORDERS, orderId);

@@ -112,17 +112,21 @@ const Dashboard = () => {
       {/* Welcome Section */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
-          🎯 Welcome to Orchestrate
+          Welcome to Orchestrate
         </Typography>
         <Typography variant="h6" color="text.secondary" gutterBottom>
           Your comprehensive platform for event tracking, logistics management, and blockchain integration
         </Typography>
         {isConnected && (
-          <Chip 
+          <Chip
             label={`Connected: ${account?.slice(0, 6)}...${account?.slice(-4)}`}
-            color="success"
             icon={<CheckIcon />}
-            sx={{ mt: 1 }}
+            sx={{
+              mt: 1,
+              bgcolor: 'rgba(76, 175, 80, 0.15)',
+              color: 'success.main',
+              border: '1px solid rgba(76, 175, 80, 0.3)'
+            }}
           />
         )}
       </Box>
@@ -287,16 +291,17 @@ const Dashboard = () => {
                       variant="outlined"
                       sx={{
                         p: 2,
-                        bgcolor: alert.type === 'warning' ? 'warning.light' :
-                                alert.type === 'success' ? 'success.light' : 'info.light',
-                        color: alert.type === 'warning' ? 'warning.contrastText' :
-                               alert.type === 'success' ? 'success.contrastText' : 'info.contrastText',
+                        bgcolor: alert.type === 'warning' ? 'rgba(255, 152, 0, 0.1)' :
+                                alert.type === 'success' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                        borderColor: alert.type === 'warning' ? 'rgba(255, 152, 0, 0.3)' :
+                                     alert.type === 'success' ? 'rgba(76, 175, 80, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                        color: 'text.primary',
                       }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                        {alert.type === 'warning' && <WarningIcon sx={{ mr: 1, mt: 0.1 }} />}
-                        {alert.type === 'success' && <CheckIcon sx={{ mr: 1, mt: 0.1 }} />}
-                        {alert.type === 'info' && <NotificationIcon sx={{ mr: 1, mt: 0.1 }} />}
+                        {alert.type === 'warning' && <WarningIcon sx={{ mr: 1, mt: 0.1, color: 'warning.main' }} />}
+                        {alert.type === 'success' && <CheckIcon sx={{ mr: 1, mt: 0.1, color: 'success.main' }} />}
+                        {alert.type === 'info' && <NotificationIcon sx={{ mr: 1, mt: 0.1, color: 'text.secondary' }} />}
                         <Box sx={{ flex: 1 }}>
                           <Typography variant="subtitle2" gutterBottom>
                             {alert.title}
@@ -307,11 +312,14 @@ const Dashboard = () => {
                           {alert.action && (
                             <Button
                               size="small"
-                              variant="contained"
+                              variant="outlined"
                               onClick={() => alert.path && navigate(alert.path)}
                               sx={{
-                                bgcolor: 'rgba(255,255,255,0.2)',
-                                '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' }
+                                borderColor: 'rgba(255,255,255,0.2)',
+                                '&:hover': {
+                                  bgcolor: 'rgba(255,255,255,0.05)',
+                                  borderColor: 'rgba(255,255,255,0.3)'
+                                }
                               }}
                             >
                               {alert.action}
@@ -329,51 +337,75 @@ const Dashboard = () => {
       </Grid>
 
       {/* Quick Actions */}
-      <Paper sx={{ p: 3, mt: 4, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+      <Paper sx={{ p: 3, mt: 4, bgcolor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)' }}>
         <Typography variant="h6" gutterBottom>
           ⚡ Quick Actions
         </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
             <Button
-              variant="contained"
+              variant="outlined"
               fullWidth
               startIcon={<EventIcon />}
               onClick={() => navigate('/events')}
-              sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}
+              sx={{
+                borderColor: 'rgba(255,255,255,0.2)',
+                '&:hover': {
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(255,255,255,0.3)'
+                }
+              }}
             >
               Create Event
             </Button>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <Button
-              variant="contained"
+              variant="outlined"
               fullWidth
               startIcon={<OrderIcon />}
               onClick={() => navigate('/orders')}
-              sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}
+              sx={{
+                borderColor: 'rgba(255,255,255,0.2)',
+                '&:hover': {
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(255,255,255,0.3)'
+                }
+              }}
             >
               Track Orders
             </Button>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <Button
-              variant="contained"
+              variant="outlined"
               fullWidth
               startIcon={<TokenIcon />}
               onClick={() => navigate('/tickets')}
-              sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}
+              sx={{
+                borderColor: 'rgba(255,255,255,0.2)',
+                '&:hover': {
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(255,255,255,0.3)'
+                }
+              }}
             >
               Mint Tickets
             </Button>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <Button
-              variant="contained"
+              variant="outlined"
               fullWidth
               startIcon={<AnalyticsIcon />}
               onClick={() => navigate('/analytics')}
-              sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}
+              sx={{
+                borderColor: 'rgba(255,255,255,0.2)',
+                '&:hover': {
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(255,255,255,0.3)'
+                }
+              }}
             >
               View Analytics
             </Button>

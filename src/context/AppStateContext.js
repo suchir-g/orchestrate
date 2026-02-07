@@ -3,7 +3,7 @@ import {
   listenToUserEvents,
   listenToUserOrders,
   listenToUserTickets,
-  createEvent,
+  createEventWithCollaboration,
   createOrder,
   createTicket,
   updateEvent as updateEventInDb,
@@ -14,6 +14,7 @@ import { listenToScheduleBlocks } from '../services/scheduleService';
 import { listenToVolunteers } from '../services/volunteerService';
 import { listenToVolunteerTasks } from '../services/volunteerTaskService';
 import { initializeActivityTracking, clearActivities } from '../services/activityService';
+import { getUserAccessibleEvents } from '../services/accessControlService';
 import { useAuth } from './AuthContext';
 
 const AppStateContext = createContext();
@@ -217,14 +218,18 @@ const appReducer = (state, action) => {
 
 export const AppStateProvider = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
 
   // Action creators
   const actions = {
     setEvents: (events) => dispatch({ type: ActionTypes.SET_EVENTS, payload: events }),
     addEvent: async (event) => {
-      // Write to Firestore - listeners will update local state
-      const { id, error } = await createEvent(event);
+      // Write to Firestore with RBAC fields - listeners will update local state
+      if (!user) {
+        console.error('User must be authenticated to create events');
+        return { id: null, error: 'User not authenticated' };
+      }
+      const { id, error } = await createEventWithCollaboration(event, user.uid);
       if (error) {
         console.error('Error creating event:', error);
         throw new Error(error);
@@ -316,11 +321,31 @@ export const AppStateProvider = ({ children }) => {
 
     console.log('🔥 Setting up user-scoped Firebase listeners for user:', user.uid);
 
-    // Listen to user's events
-    const unsubscribeEvents = listenToUserEvents(user.uid, (events) => {
-      console.log('📅 User events updated from Firebase:', events.length);
-      dispatch({ type: ActionTypes.SET_EVENTS, payload: events });
+    // Fetch ALL accessible events (including collaborated, volunteer, sponsor events)
+    const fetchAccessibleEvents = async () => {
+      const currentUserRole = userRole || 'attendee';
+      const { data: accessibleEvents, error } = await getUserAccessibleEvents(user.uid, currentUserRole);
+
+      if (!error && accessibleEvents) {
+        console.log(`📅 Accessible events loaded for role "${currentUserRole}":`, accessibleEvents.length);
+        dispatch({ type: ActionTypes.SET_EVENTS, payload: accessibleEvents });
+      } else if (error) {
+        console.error('Error loading accessible events:', error);
+      }
+    };
+
+    // Initial fetch
+    fetchAccessibleEvents();
+
+    // Set up real-time listener for user's owned events (for immediate updates)
+    const unsubscribeEvents = listenToUserEvents(user.uid, (ownedEvents) => {
+      console.log('📅 User owned events updated from Firebase:', ownedEvents.length);
+      // Re-fetch all accessible events to include collaborated events
+      fetchAccessibleEvents();
     });
+
+    // Periodic refresh for collaborated events (every 30 seconds)
+    const refreshInterval = setInterval(fetchAccessibleEvents, 30000);
 
     // Listen to user's orders
     const unsubscribeOrders = listenToUserOrders(user.uid, (orders) => {
@@ -362,12 +387,13 @@ export const AppStateProvider = ({ children }) => {
       unsubscribeOrders();
       unsubscribeTickets();
       unsubscribeActivities();
+      clearInterval(refreshInterval);
       // Add cleanup for hackathon listeners when enabled:
       // unsubscribeScheduleBlocks();
       // unsubscribeVolunteers();
       // unsubscribeVolunteerTasks();
     };
-  }, [user]); // Re-run when user changes (login/logout)
+  }, [user, userRole]); // Re-run when user changes (login/logout) or role changes
 
   const value = {
     ...state,

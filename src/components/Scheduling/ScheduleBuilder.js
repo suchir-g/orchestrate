@@ -27,12 +27,15 @@ import {
   ArrowBack as BackIcon,
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
+import { useAuth } from '../../context/AuthContext';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   getAllScheduleBlocks,
   getScheduleBlocksByDay,
   deleteScheduleBlock,
 } from '../../services/scheduleService';
+import { getUserEventRole } from '../../services/accessControlService';
+import { PERMISSIONS, hasEventPermission } from '../../utils/roleConstants';
 import toast from 'react-hot-toast';
 import ScheduleBlockForm from './ScheduleBlockForm';
 import HourByHourGrid from './HourByHourGrid';
@@ -41,6 +44,7 @@ const ScheduleBuilder = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { events, scheduleBlocks, setScheduleBlocks, deleteScheduleBlock: deleteScheduleBlockAction, setLoading } = useAppState();
+  const { user, userRole } = useAuth();
 
   const [currentEvent, setCurrentEvent] = useState(null);
   const [selectedDay, setSelectedDay] = useState(1);
@@ -48,6 +52,8 @@ const ScheduleBuilder = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [dayBlocks, setDayBlocks] = useState([]);
+  const [userEventRole, setUserEventRole] = useState(null);
+  const [canEditSchedule, setCanEditSchedule] = useState(false);
 
   // Load current event
   useEffect(() => {
@@ -61,6 +67,23 @@ const ScheduleBuilder = () => {
       }
     }
   }, [eventId, events]);
+
+  // Load user's event role and check permissions
+  useEffect(() => {
+    const loadUserEventRole = async () => {
+      if (!eventId || !user) return;
+
+      const role = await getUserEventRole(eventId, user.uid, userRole);
+      setUserEventRole(role);
+
+      // Check if user can edit schedule
+      // Only owners and organizers can edit schedules
+      const canEdit = role && hasEventPermission(role, PERMISSIONS.SCHEDULE_EDIT);
+      setCanEditSchedule(canEdit);
+    };
+
+    loadUserEventRole();
+  }, [eventId, user, userRole]);
 
   // Load schedule blocks for the event
   useEffect(() => {
@@ -265,13 +288,15 @@ const ScheduleBuilder = () => {
                 <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
                   No schedule blocks for Day {selectedDay}
                 </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={handleAddBlock}
-                >
-                  Add Schedule Block
-                </Button>
+                {canEditSchedule && (
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={handleAddBlock}
+                  >
+                    Add Schedule Block
+                  </Button>
+                )}
               </Paper>
             </Grid>
           ) : (
@@ -306,22 +331,24 @@ const ScheduleBuilder = () => {
                           {block.title}
                         </Typography>
                       </Box>
-                      <Box>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleEditBlock(block)}
-                          sx={{ color: '#00d4ff' }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteBlock(block.id)}
-                          sx={{ color: '#ff6b9d' }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Box>
+                      {canEditSchedule && (
+                        <Box>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditBlock(block)}
+                            sx={{ color: '#00d4ff' }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteBlock(block.id)}
+                            sx={{ color: '#ff6b9d' }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
+                      )}
                     </Box>
 
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -367,19 +394,21 @@ const ScheduleBuilder = () => {
         </Grid>
       )}
 
-      {/* Floating Add Button */}
-      <Fab
-        color="primary"
-        sx={{
-          position: 'fixed',
-          bottom: 32,
-          right: 32,
-          background: 'linear-gradient(45deg, #00d4ff 30%, #ff6b9d 90%)',
-        }}
-        onClick={handleAddBlock}
-      >
-        <AddIcon />
-      </Fab>
+      {/* Floating Add Button - Only for event organizers/owners */}
+      {canEditSchedule && (
+        <Fab
+          color="primary"
+          sx={{
+            position: 'fixed',
+            bottom: 32,
+            right: 32,
+            background: 'linear-gradient(45deg, #00d4ff 30%, #ff6b9d 90%)',
+          }}
+          onClick={handleAddBlock}
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       {/* Schedule Block Form Dialog */}
       <ScheduleBlockForm

@@ -9,6 +9,7 @@ import {
   signUpWithEmail,
   logout as firebaseLogout
 } from '../services/firebaseAuthService';
+import { getDefaultUserRole } from '../utils/roleConstants';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
@@ -186,7 +187,14 @@ export const AuthProvider = ({ children }) => {
       const userDoc = await getDoc(userDocRef);
 
       if (userDoc.exists()) {
-        setUserProfile({ id: userDoc.id, ...userDoc.data() });
+        const profile = userDoc.data();
+        // Ensure role exists, add default if missing
+        if (!profile.role) {
+          const defaultRole = getDefaultUserRole();
+          await setDoc(userDocRef, { role: defaultRole }, { merge: true });
+          profile.role = defaultRole;
+        }
+        setUserProfile({ id: userDoc.id, ...profile });
       } else {
         // Create initial profile if it doesn't exist
         const initialProfile = {
@@ -194,6 +202,8 @@ export const AuthProvider = ({ children }) => {
           displayName: auth.currentUser?.displayName || '',
           photoURL: auth.currentUser?.photoURL || '',
           walletAddress: null,
+          role: getDefaultUserRole(), // Default role for new users
+          organizationId: null, // Optional organization membership
           createdAt: new Date(),
           updatedAt: new Date()
         };
@@ -245,6 +255,23 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error('Failed to update profile');
+      return { error: error.message };
+    }
+  };
+
+  // Update user role (admin only)
+  const updateUserRole = async (newRole) => {
+    if (!user) return { error: 'No user signed in' };
+
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      await setDoc(userDocRef, { role: newRole, updatedAt: new Date() }, { merge: true });
+      setUserProfile(prev => ({ ...prev, role: newRole }));
+      toast.success('Role updated successfully!');
+      return { error: null };
+    } catch (error) {
+      console.error('Error updating role:', error);
+      toast.error('Failed to update role');
       return { error: error.message };
     }
   };
@@ -320,8 +347,10 @@ export const AuthProvider = ({ children }) => {
     signUpEmail,
     logout,
     updateProfile,
+    updateUserRole,
     syncWalletToProfile,
     isAuthenticated: !!user,
+    userRole: userProfile?.role || null,
     // Account-scoped wallet properties
     walletAddress,
     walletProvider,

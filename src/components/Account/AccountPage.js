@@ -28,6 +28,7 @@ import {
   Sync as SyncIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
+import RoleSelector from './RoleSelector';
 import toast from 'react-hot-toast';
 
 const AccountPage = () => {
@@ -355,6 +356,11 @@ const AccountPage = () => {
               </Box>
             )}
           </Paper>
+
+          {/* Role Selector */}
+          <Box sx={{ mb: 3 }}>
+            <RoleSelector />
+          </Box>
 
           {/* Activity Card */}
           <Paper

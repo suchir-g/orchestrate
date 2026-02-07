@@ -1,306 +1,198 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.17;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title EventTicketNFT
- * @dev Smart contract for managing event tickets as NFTs on the blockchain
- * Features:
- * - Mint tickets for events
- * - Transfer tickets between users
- * - Validate ticket authenticity
- * - Track ticket usage/redemption
- * - Event organizer controls
+ * @dev ERC1155 token for event tickets with check-in functionality
  */
-contract EventTicketNFT is ERC721, ERC721URIStorage, Ownable {
-    using Counters for Counters.Counter;
-    Counters.Counter private _tokenIdCounter;
+contract EventTicketNFT is ERC1155, Ownable, ReentrancyGuard {
+    using Strings for uint256;
 
-    struct Ticket {
-        uint256 eventId;
-        string eventName;
-        string eventDate;
-        string ticketType;
-        uint256 price;
-        bool isUsed;
-        address originalOwner;
-        uint256 createdAt;
-    }
-
-    struct Event {
-        uint256 eventId;
-        string name;
-        string date;
-        string location;
-        address organizer;
-        uint256 totalTickets;
-        uint256 soldTickets;
+    struct TicketTier {
+        uint256 tierId;
+        string eventId; // Firebase event ID
+        string name; // "VIP", "General Admission", etc.
+        uint256 price; // in wei
+        uint256 maxSupply;
+        uint256 sold;
         bool isActive;
-        uint256 createdAt;
+        address organizer;
     }
 
     // Mappings
-    mapping(uint256 => Ticket) public tickets;
-    mapping(uint256 => Event) public events;
-    mapping(address => bool) public authorizedValidators;
-    mapping(uint256 => mapping(address => uint256)) public eventTicketBalance;
+    mapping(uint256 => TicketTier) public ticketTiers;
+    mapping(string => mapping(address => bool)) public hasCheckedIn; // eventId => user => checked in
+    mapping(uint256 => mapping(address => uint256)) public purchaseTimestamp; // tierId => user => timestamp
+    mapping(address => bool) public authorizedVerifiers; // Who can check people in
+
+    uint256 public tierCounter;
+    string public baseMetadataURI;
 
     // Events
-    event EventCreated(uint256 indexed eventId, string name, address organizer);
-    event TicketMinted(uint256 indexed tokenId, uint256 indexed eventId, address recipient);
-    event TicketUsed(uint256 indexed tokenId, address validator);
-    event ValidatorAuthorized(address validator);
-    event ValidatorRevoked(address validator);
+    event TicketTierCreated(uint256 indexed tierId, string eventId, string name, uint256 price, uint256 maxSupply);
+    event TicketMinted(uint256 indexed tierId, string eventId, address indexed buyer, uint256 timestamp);
+    event TicketCheckedIn(string indexed eventId, address indexed attendee, uint256 timestamp);
+    event VerifierAuthorized(address indexed verifier, bool authorized);
 
-    constructor() ERC721("EventTicket", "ETKT") {}
-
-    modifier onlyEventOrganizer(uint256 eventId) {
-        require(events[eventId].organizer == msg.sender, "Not event organizer");
-        _;
-    }
-
-    modifier onlyValidator() {
-        require(authorizedValidators[msg.sender], "Not authorized validator");
-        _;
+    constructor(string memory _baseURI) ERC1155(_baseURI) {
+        baseMetadataURI = _baseURI;
     }
 
     /**
-     * @dev Create a new event
+     * @dev Create a new ticket tier
      */
-    function createEvent(
-        string memory name,
-        string memory date,
-        string memory location,
-        uint256 totalTickets
-    ) external returns (uint256) {
-        uint256 eventId = _tokenIdCounter.current();
-        _tokenIdCounter.increment();
+    function createTicketTier(
+        string memory _eventId,
+        string memory _name,
+        uint256 _price,
+        uint256 _maxSupply,
+        address _organizer
+    ) external onlyOwner returns (uint256) {
+        require(_maxSupply > 0, "Max supply must be > 0");
+        require(_organizer != address(0), "Invalid organizer address");
 
-        events[eventId] = Event({
-            eventId: eventId,
-            name: name,
-            date: date,
-            location: location,
-            organizer: msg.sender,
-            totalTickets: totalTickets,
-            soldTickets: 0,
+        tierCounter++;
+        ticketTiers[tierCounter] = TicketTier({
+            tierId: tierCounter,
+            eventId: _eventId,
+            name: _name,
+            price: _price,
+            maxSupply: _maxSupply,
+            sold: 0,
             isActive: true,
-            createdAt: block.timestamp
+            organizer: _organizer
         });
 
-        emit EventCreated(eventId, name, msg.sender);
-        return eventId;
+        emit TicketTierCreated(tierCounter, _eventId, _name, _price, _maxSupply);
+        return tierCounter;
     }
 
     /**
-     * @dev Mint a new ticket for an event
+     * @dev Mint a ticket (purchase)
      */
-    function mintTicket(
-        address recipient,
-        uint256 eventId,
-        string memory ticketType,
-        uint256 price,
-        string memory tokenURI
-    ) external onlyEventOrganizer(eventId) returns (uint256) {
-        require(events[eventId].isActive, "Event is not active");
+    function mintTicket(uint256 _tierId) external payable nonReentrant {
+        TicketTier storage tier = ticketTiers[_tierId];
+
+        require(tier.isActive, "Ticket tier not active");
+        require(tier.sold < tier.maxSupply, "Sold out");
+        require(msg.value >= tier.price, "Insufficient payment");
+        require(balanceOf(msg.sender, _tierId) == 0, "Already owns ticket");
+
+        _mint(msg.sender, _tierId, 1, "");
+
+        tier.sold++;
+        purchaseTimestamp[_tierId][msg.sender] = block.timestamp;
+
+        (bool success, ) = tier.organizer.call{value: msg.value}("");
+        require(success, "Payment transfer failed");
+
+        emit TicketMinted(_tierId, tier.eventId, msg.sender, block.timestamp);
+    }
+
+    /**
+     * @dev Check-in at venue
+     */
+    function checkIn(
+        string memory _eventId,
+        address _attendee,
+        uint256 _tierId
+    ) external {
+        TicketTier memory tier = ticketTiers[_tierId];
+
         require(
-            events[eventId].soldTickets < events[eventId].totalTickets,
-            "All tickets sold"
+            msg.sender == tier.organizer ||
+            msg.sender == owner() ||
+            authorizedVerifiers[msg.sender],
+            "Not authorized to check in"
         );
-
-        uint256 tokenId = _tokenIdCounter.current();
-        _tokenIdCounter.increment();
-
-        _safeMint(recipient, tokenId);
-        _setTokenURI(tokenId, tokenURI);
-
-        tickets[tokenId] = Ticket({
-            eventId: eventId,
-            eventName: events[eventId].name,
-            eventDate: events[eventId].date,
-            ticketType: ticketType,
-            price: price,
-            isUsed: false,
-            originalOwner: recipient,
-            createdAt: block.timestamp
-        });
-
-        events[eventId].soldTickets++;
-        eventTicketBalance[eventId][recipient]++;
-
-        emit TicketMinted(tokenId, eventId, recipient);
-        return tokenId;
-    }
-
-    /**
-     * @dev Batch mint multiple tickets
-     */
-    function batchMintTickets(
-        address[] memory recipients,
-        uint256 eventId,
-        string memory ticketType,
-        uint256 price,
-        string memory baseTokenURI
-    ) external onlyEventOrganizer(eventId) returns (uint256[] memory) {
-        require(events[eventId].isActive, "Event is not active");
+        require(balanceOf(_attendee, _tierId) > 0, "No ticket owned");
+        require(!hasCheckedIn[_eventId][_attendee], "Already checked in");
         require(
-            events[eventId].soldTickets + recipients.length <= events[eventId].totalTickets,
-            "Not enough tickets available"
+            keccak256(abi.encodePacked(tier.eventId)) == keccak256(abi.encodePacked(_eventId)),
+            "Ticket not for this event"
         );
 
-        uint256[] memory tokenIds = new uint256[](recipients.length);
+        hasCheckedIn[_eventId][_attendee] = true;
 
-        for (uint256 i = 0; i < recipients.length; i++) {
-            uint256 tokenId = _tokenIdCounter.current();
-            _tokenIdCounter.increment();
+        emit TicketCheckedIn(_eventId, _attendee, block.timestamp);
+    }
 
-            _safeMint(recipients[i], tokenId);
-            _setTokenURI(tokenId, string(abi.encodePacked(baseTokenURI, Strings.toString(tokenId))));
+    /**
+     * @dev Verify ticket ownership and validity
+     */
+    function verifyTicket(
+        string memory _eventId,
+        address _attendee,
+        uint256 _tierId
+    ) external view returns (bool isValid, string memory reason) {
+        TicketTier memory tier = ticketTiers[_tierId];
 
-            tickets[tokenId] = Ticket({
-                eventId: eventId,
-                eventName: events[eventId].name,
-                eventDate: events[eventId].date,
-                ticketType: ticketType,
-                price: price,
-                isUsed: false,
-                originalOwner: recipients[i],
-                createdAt: block.timestamp
-            });
-
-            eventTicketBalance[eventId][recipients[i]]++;
-            tokenIds[i] = tokenId;
-
-            emit TicketMinted(tokenId, eventId, recipients[i]);
+        if (balanceOf(_attendee, _tierId) == 0) {
+            return (false, "No ticket owned");
         }
 
-        events[eventId].soldTickets += recipients.length;
-        return tokenIds;
-    }
-
-    /**
-     * @dev Use/redeem a ticket (only by authorized validators)
-     */
-    function useTicket(uint256 tokenId) external onlyValidator {
-        require(_exists(tokenId), "Ticket does not exist");
-        require(!tickets[tokenId].isUsed, "Ticket already used");
-
-        tickets[tokenId].isUsed = true;
-        emit TicketUsed(tokenId, msg.sender);
-    }
-
-    /**
-     * @dev Validate ticket authenticity and usage status
-     */
-    function validateTicket(uint256 tokenId) external view returns (
-        bool exists,
-        bool isUsed,
-        address owner,
-        string memory eventName,
-        string memory eventDate
-    ) {
-        if (!_exists(tokenId)) {
-            return (false, false, address(0), "", "");
+        if (keccak256(abi.encodePacked(tier.eventId)) != keccak256(abi.encodePacked(_eventId))) {
+            return (false, "Ticket not for this event");
         }
 
-        Ticket memory ticket = tickets[tokenId];
-        return (
-            true,
-            ticket.isUsed,
-            ownerOf(tokenId),
-            ticket.eventName,
-            ticket.eventDate
-        );
-    }
-
-    /**
-     * @dev Get ticket details
-     */
-    function getTicketDetails(uint256 tokenId) external view returns (Ticket memory) {
-        require(_exists(tokenId), "Ticket does not exist");
-        return tickets[tokenId];
-    }
-
-    /**
-     * @dev Get event details
-     */
-    function getEventDetails(uint256 eventId) external view returns (Event memory) {
-        return events[eventId];
-    }
-
-    /**
-     * @dev Get user's tickets for a specific event
-     */
-    function getUserEventTickets(address user, uint256 eventId) external view returns (uint256[] memory) {
-        uint256 balance = eventTicketBalance[eventId][user];
-        uint256[] memory userTickets = new uint256[](balance);
-        uint256 currentIndex = 0;
-
-        for (uint256 i = 0; i < _tokenIdCounter.current(); i++) {
-            if (_exists(i) && tickets[i].eventId == eventId && ownerOf(i) == user) {
-                userTickets[currentIndex] = i;
-                currentIndex++;
-            }
+        if (hasCheckedIn[_eventId][_attendee]) {
+            return (false, "Already checked in");
         }
 
-        return userTickets;
+        return (true, "Valid ticket");
     }
 
-    /**
-     * @dev Authorize a validator
-     */
-    function authorizeValidator(address validator) external onlyOwner {
-        authorizedValidators[validator] = true;
-        emit ValidatorAuthorized(validator);
+    function setVerifier(address _verifier, bool _authorized) external onlyOwner {
+        authorizedVerifiers[_verifier] = _authorized;
+        emit VerifierAuthorized(_verifier, _authorized);
     }
 
-    /**
-     * @dev Revoke validator authorization
-     */
-    function revokeValidator(address validator) external onlyOwner {
-        authorizedValidators[validator] = false;
-        emit ValidatorRevoked(validator);
+    function setTicketTierActive(uint256 _tierId, bool _isActive) external onlyOwner {
+        ticketTiers[_tierId].isActive = _isActive;
     }
 
-    /**
-     * @dev Deactivate an event
-     */
-    function deactivateEvent(uint256 eventId) external onlyEventOrganizer(eventId) {
-        events[eventId].isActive = false;
+    function updateTicketPrice(uint256 _tierId, uint256 _newPrice) external {
+        TicketTier storage tier = ticketTiers[_tierId];
+        require(msg.sender == tier.organizer || msg.sender == owner(), "Not authorized");
+        tier.price = _newPrice;
     }
 
-    /**
-     * @dev Override transfer functions to update balances
-     */
+    function getTicketTier(uint256 _tierId) external view returns (TicketTier memory) {
+        return ticketTiers[_tierId];
+    }
+
+    function uri(uint256 _tierId) public view override returns (string memory) {
+        return string(abi.encodePacked(baseMetadataURI, _tierId.toString(), ".json"));
+    }
+
+    function setBaseURI(string memory _newBaseURI) external onlyOwner {
+        baseMetadataURI = _newBaseURI;
+        emit URI(_newBaseURI, 0);
+    }
+
     function _beforeTokenTransfer(
+        address operator,
         address from,
         address to,
-        uint256 tokenId,
-        uint256 batchSize
-    ) internal override {
-        super._beforeTokenTransfer(from, to, tokenId, batchSize);
+        uint256[] memory ids,
+        uint256[] memory amounts,
+        bytes memory data
+    ) internal virtual override {
+        super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
 
-        if (from != address(0) && to != address(0)) {
-            uint256 eventId = tickets[tokenId].eventId;
-            eventTicketBalance[eventId][from]--;
-            eventTicketBalance[eventId][to]++;
+        if (from == address(0)) return;
+
+        for (uint256 i = 0; i < ids.length; i++) {
+            TicketTier memory tier = ticketTiers[ids[i]];
+            require(
+                !hasCheckedIn[tier.eventId][from],
+                "Cannot transfer ticket after check-in"
+            );
         }
-    }
-
-    // Override required functions
-    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
-        super._burn(tokenId);
-    }
-
-    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
-        return super.tokenURI(tokenId);
-    }
-
-    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC721URIStorage) returns (bool) {
-        return super.supportsInterface(interfaceId);
     }
 }
