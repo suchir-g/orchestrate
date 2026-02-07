@@ -15,6 +15,393 @@
 
 ---
 
+## User Access Levels & Permissions
+
+**Goal:** Implement role-based access control (RBAC) for different account types
+
+### Access Level Definitions
+
+#### 1. **Admin** 👨‍💼
+**Primary Role:** Event organizers and administrators
+
+**Permissions:**
+- ✅ **Schedule Management**
+  - Create, edit, and delete timetable blocks
+  - Modify timing, locations, and session details
+  - Manage parallel tracks
+  - Change session status (scheduled → in_progress → completed)
+  
+- ✅ **Volunteer Management**
+  - View all volunteer profiles and assignments
+  - Create and edit volunteer tasks
+  - Generate AI predictions for volunteer needs
+  - Assign volunteers to specific slots
+  - Track check-in/out status
+  
+- ✅ **Deliverables & Logistics**
+  - View all deliverables and items being provided
+  - Track item inventory and status
+  - Manage food service planning
+  - Access infrastructure status (WiFi, equipment, power)
+  - Manage accommodations and room assignments
+  
+- ✅ **Sponsor/Contractor Management**
+  - Contact and communicate with sponsors and contractors
+  - View sponsor requests and commitments
+  - Manage item contributions to prevent duplicates
+  - Access sponsor contact information
+  - Send notifications and updates
+
+- ✅ **Reports & Analytics**
+  - View analytics dashboard
+  - Generate predictions and recommendations
+  - Export reports
+
+**Database Access:** Full read/write access to all collections
+
+---
+
+#### 2. **Volunteer** 👥
+**Primary Role:** Event volunteers and staff
+
+**Permissions:**
+- ✅ **Schedule Access**
+  - View full event timetable (all sessions)
+  - See schedule in calendar and grid view
+  
+- ✅ **Personal Assignments**
+  - View their own specific assignments and tasks
+  - See their personal schedule (where to be, when, what responsibilities)
+  - View shift timings and locations
+  - Update their availability status
+  - Confirm task assignments
+  
+- ✅ **Task Management**
+  - Mark tasks as completed
+  - Report issues or gaps
+  - Update check-in/out status
+
+- ✅ **View Limited Information**
+  - See event general information
+  - Access volunteer contact directory (other volunteers only)
+  - View volunteer-specific analytics
+
+**Restricted Access:**
+- ❌ Cannot modify timetable
+- ❌ Cannot view other volunteers' detailed assignments
+- ❌ Cannot access sponsor/contractor information
+- ❌ Cannot view deliverables list
+- ❌ Cannot manage accommodation or food service
+
+**Database Access:** Read-only access to schedule blocks; read/write access to own volunteer record and assignments
+
+---
+
+#### 3. **Sponsor** 💼
+**Primary Role:** Companies/sponsors providing items or services
+
+**Permissions:**
+- ✅ **Schedule Visibility**
+  - View the full event timetable
+  - Understand event flow and timings
+  
+- ✅ **Item Contribution Management**
+  - View list of items already being provided by other sponsors
+  - **Request to bring items** (with overlap prevention)
+  - Submit item requests
+  - Specify quantity and type
+  - See what items are needed vs. available
+  - Prevent duplicate item requests (system validation)
+  
+- ✅ **Volunteer Request System**
+  - Request volunteers for specific tasks/slots
+  - Specify time, location, and required skill level
+  - Receive status updates on volunteer assignments
+  - Send requests to admin for approval
+  
+- ✅ **Communication**
+  - Message event admins/organizers
+  - Receive event updates
+  - Track status of their requests
+
+- ✅ **Limited Analytics**
+  - View how their contributed items align with schedule
+  - See which sessions/timeslots need their contribution
+
+**Restricted Access:**
+- ❌ Cannot modify timetable or schedule
+- ❌ Cannot see detailed volunteer assignment schedule
+- ❌ Cannot access other sponsors' information
+- ❌ Cannot manage accommodations or food service
+- ❌ Cannot access admin dashboard
+
+**Database Access:** Read-only access to schedule blocks and deliverables list; read/write access to own sponsor requests and item contributions; restricted write access to `sponsorRequests` collection
+
+---
+
+#### 4. **Attendee** 👤
+**Primary Role:** Event participants/guests
+
+**Permissions:**
+- ✅ **Schedule Access (FINALISED ONLY)**
+  - View finalized/completed timetable
+  - Cannot see draft, in-progress, or cancelled sessions
+  - View session details (title, time, location, speakers)
+  - See their registered sessions
+  - Access schedule in calendar view
+  
+- ✅ **Basic Information**
+  - View event dates and general info
+  - See venue location
+  - Access event code of conduct
+
+- ✅ **Registration**
+  - Register for sessions/workshops (if capacity allows)
+  - View their registration confirmations
+  - Receive event notifications
+
+**Restricted Access:**
+- ❌ Cannot view unreleased/draft schedule
+- ❌ Cannot modify any timetable
+- ❌ Cannot see volunteer assignments
+- ❌ Cannot access sponsor information
+- ❌ Cannot view deliverables or logistics
+- ❌ Cannot access admin features
+- ❌ Cannot request volunteers
+
+**Database Access:** Read-only access to finalized schedule blocks; read-only access to own registrations
+
+---
+
+### Database Schema for Access Control
+
+#### Update `users` Collection
+```javascript
+{
+  id: auto,
+  email: string,
+  name: string,
+  authProvider: string,          // google, email, metamask
+  accountType: string,           // personal, org
+  roles: [{
+    role: string,                // admin, volunteer, sponsor, attendee
+    eventId: string,             // which event(s) this role applies to
+    assignedAt: timestamp,
+    assignedBy: string           // admin user ID
+  }],
+  permissions: [string],         // computed from roles
+  metadata: {
+    lastLogin: timestamp,
+    loginCount: number
+  },
+  createdAt: timestamp,
+  updatedAt: timestamp
+}
+```
+
+#### New Collection: `rolePermissions`
+```javascript
+{
+  id: auto,
+  role: string,                  // admin, volunteer, sponsor, attendee
+  permissions: [string],         // list of permission keys
+  resourceAccess: {
+    schedule: string,            // 'read', 'write', 'none'
+    volunteers: string,
+    deliverables: string,
+    sponsors: string,
+    accommodations: string,
+    foodService: string,
+    infrastructure: string,
+    analytics: string
+  },
+  createdAt: timestamp,
+  updatedAt: timestamp
+}
+```
+
+#### New Collection: `sponsorRequests`
+```javascript
+{
+  id: auto,
+  eventId: string,
+  sponsorId: string,
+  type: string,                  // volunteer_request, item_request
+  
+  // For volunteer requests
+  volunteerRequest: {
+    taskType: string,            // specific role/task needed
+    requiredCount: number,
+    skillsRequired: [string],
+    timeSlot: {
+      date: timestamp,
+      startTime: string,
+      endTime: string
+    },
+    location: string,
+    description: string
+  },
+  
+  // For item requests
+  itemRequest: {
+    itemName: string,
+    category: string,            // food, equipment, signage, etc.
+    quantity: number,
+    unit: string,
+    description: string,
+    conflictingItems: [string]   // items that might overlap
+  },
+  
+  status: string,                // pending, approved, rejected, fulfilled
+  approvedBy: string,            // admin user ID
+  approvalDate: timestamp,
+  notes: string,
+  createdAt: timestamp,
+  updatedAt: timestamp
+}
+```
+
+#### New Collection: `providedItems`
+```javascript
+{
+  id: auto,
+  eventId: string,
+  sponsorId: string,             // null if provided by organizer
+  itemName: string,
+  category: string,              // food, equipment, signage, supplies
+  quantity: number,
+  unit: string,
+  description: string,
+  deliveryDate: timestamp,
+  deliveryLocation: string,
+  status: string,                // pending, delivered, deployed, used, returned
+  relatedScheduleBlocks: [string], // schedule blocks this item is for
+  createdAt: timestamp,
+  updatedAt: timestamp
+}
+```
+
+---
+
+### Authentication & Authorization Implementation
+
+#### 1. **Service Layer: `src/services/authorizationService.js`**
+```javascript
+export const checkPermission = (user, permission, eventId) => {
+  // Check if user has specific permission
+  // Returns boolean
+};
+
+export const getUserRole = (user, eventId) => {
+  // Get user's role(s) for specific event
+  // Returns string or array
+};
+
+export const canAccessResource = (user, resource, eventId, action) => {
+  // Determine if user can read/write specific resource
+  // Returns boolean
+};
+
+export const getFilteredData = (user, data, resource, eventId) => {
+  // Filter data based on user permissions
+  // Returns filtered array
+};
+
+export const validateSponsorRequest = (request, existingItems) => {
+  // Check for item overlaps and conflicts
+  // Returns validation result with conflicts
+};
+```
+
+#### 2. **Context Enhancement: Update `src/context/AuthContext.js`**
+```javascript
+{
+  user: {
+    id: string,
+    email: string,
+    roles: [{role, eventId}],
+    permissions: [string],
+    accountType: string
+  },
+  
+  functions: {
+    assignRole(userId, role, eventId),
+    removeRole(userId, role, eventId),
+    hasPermission(permission, eventId),
+    getRole(eventId),
+    canAccess(resource, action, eventId)
+  }
+}
+```
+
+#### 3. **Component Wrapper: `src/components/Common/ProtectedRoute.js`**
+```javascript
+// HOC to protect routes based on role/permission
+<ProtectedRoute 
+  requiredRole="admin" 
+  requiredPermissions={['schedule_write', 'volunteer_read']}
+  eventId={eventId}
+>
+  <ScheduleBuilder />
+</ProtectedRoute>
+```
+
+#### 4. **Data Filtering: `src/components/Common/DataFilter.js`**
+```javascript
+// Automatically filter data based on user role
+const filteredSchedule = applyRoleFilter(allScheduleBlocks, userRole, userId);
+const visibleItems = applyRoleFilter(allItems, userRole);
+```
+
+---
+
+### Implementation Roadmap
+
+1. **Update Authentication Context** (`AuthContext.js`)
+   - Store user roles and permissions
+   - Add permission checking functions
+
+2. **Create Authorization Service** (`authorizationService.js`)
+   - Implement permission checking logic
+   - Add data filtering functions
+   - Add conflict validation for sponsor requests
+
+3. **Update Database Collections**
+   - Modify `users` collection with roles
+   - Create `rolePermissions` reference collection
+   - Create `sponsorRequests` collection
+   - Create `providedItems` collection
+
+4. **Create Protected Route Component**
+   - Wrap restricted pages
+   - Show unauthorized message when needed
+
+5. **Update Existing Components**
+   - Add permission checks before rendering features
+   - Filter data based on user role
+   - Hide restricted buttons/forms
+
+6. **Create New Sponsor-Specific Components**
+   - Sponsor Dashboard
+   - Item Request Form with conflict checking
+   - Volunteer Request Form
+   - Request Status Tracker
+
+7. **Create Admin Role Management**
+   - User management page
+   - Role assignment interface
+   - Permission management dashboard
+
+8. **Testing**
+   - Test each role's access level
+   - Test permission inheritance
+   - Test sponsor request validation
+   - Test data filtering
+
+**Estimated Time:** 3-4 days
+
+---
+
 ## Phase 1: Hackathon Scheduling System 🎯
 
 **Goal:** Multi-day hour-by-hour event scheduling with parallel tracks

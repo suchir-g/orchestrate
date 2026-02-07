@@ -38,11 +38,13 @@ import {
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const EventTracking = () => {
   const { events, addEvent, updateEvent, setLoading } = useAppState();
   const navigate = useNavigate();
+  const { userRoles } = useAuth();
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [tabValue, setTabValue] = useState(0);
@@ -136,6 +138,9 @@ const EventTracking = () => {
             color={getStatusColor(event.status)}
             size="small"
           />
+          {userRoles && userRoles[event.id] && (
+            <Chip label={Array.isArray(userRoles[event.id]) ? userRoles[event.id].join(', ') : userRoles[event.id]} size="small" sx={{ ml: 1 }} />
+          )}
         </Box>
         
         <Typography color="text.secondary" gutterBottom>
@@ -456,6 +461,8 @@ const EventTracking = () => {
               default: return true;
             }
           })
+          // Only show events the current user is involved in
+          .filter(event => userRoles && userRoles[event.id])
           .map((event) => (
             <Grid item xs={12} md={6} lg={4} key={event.id}>
               <EventCard event={event} />

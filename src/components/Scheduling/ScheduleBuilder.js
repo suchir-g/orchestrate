@@ -17,6 +17,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  Alert,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -25,9 +26,12 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   ArrowBack as BackIcon,
+  LockOutlined as LockIcon,
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
+import { useAuth } from '../../context/AuthContext';
 import { useParams, useNavigate } from 'react-router-dom';
+import * as authService from '../../services/authorizationService';
 import {
   getAllScheduleBlocks,
   getScheduleBlocksByDay,
@@ -41,6 +45,7 @@ const ScheduleBuilder = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { events, scheduleBlocks, setScheduleBlocks, deleteScheduleBlock: deleteScheduleBlockAction, setLoading } = useAppState();
+  const { userRoles } = useAuth();
 
   const [currentEvent, setCurrentEvent] = useState(null);
   const [selectedDay, setSelectedDay] = useState(1);
@@ -48,6 +53,10 @@ const ScheduleBuilder = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [dayBlocks, setDayBlocks] = useState([]);
+  
+  // Permission check
+  const userRole = userRoles[eventId];
+  const canEdit = userRole === 'admin';
 
   // Load current event
   useEffect(() => {
@@ -149,19 +158,15 @@ const ScheduleBuilder = () => {
     }
   };
 
-  if (!currentEvent) {
-    return (
-      <Container maxWidth="lg" sx={{ mt: 4 }}>
-        <Typography variant="h5">Event not found</Typography>
-      </Container>
-    );
-  }
-
-  const durationDays = currentEvent.durationDays || 1;
-  const dayTabs = Array.from({ length: durationDays }, (_, i) => i + 1);
-
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+      {/* Permission Alert */}
+      {!canEdit && (
+        <Alert severity="info" sx={{ mb: 3 }} icon={<LockIcon />}>
+          You are viewing the schedule in read-only mode. Only administrators can modify the schedule.
+        </Alert>
+      )}
+
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Button
@@ -185,7 +190,7 @@ const ScheduleBuilder = () => {
           Schedule Builder
         </Typography>
         <Typography variant="h6" color="text.secondary">
-          {currentEvent.name} - {durationDays} Day{durationDays > 1 ? 's' : ''}
+          {currentEvent.name} - {currentEvent?.durationDays} Day{currentEvent?.durationDays > 1 ? 's' : ''}
         </Typography>
       </Box>
 
@@ -211,7 +216,7 @@ const ScheduleBuilder = () => {
               },
             }}
           >
-            {dayTabs.map(day => (
+            {Array.from({ length: currentEvent?.durationDays || 1 }, (_, i) => i + 1).map(day => (
               <Tab
                 key={day}
                 label={`Day ${day}`}
@@ -265,13 +270,15 @@ const ScheduleBuilder = () => {
                 <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
                   No schedule blocks for Day {selectedDay}
                 </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={handleAddBlock}
-                >
-                  Add Schedule Block
-                </Button>
+                {canEdit && (
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={handleAddBlock}
+                  >
+                    Add Schedule Block
+                  </Button>
+                )}
               </Paper>
             </Grid>
           ) : (
@@ -306,22 +313,24 @@ const ScheduleBuilder = () => {
                           {block.title}
                         </Typography>
                       </Box>
-                      <Box>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleEditBlock(block)}
-                          sx={{ color: '#00d4ff' }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteBlock(block.id)}
-                          sx={{ color: '#ff6b9d' }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Box>
+                      {canEdit && (
+                        <Box>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditBlock(block)}
+                            sx={{ color: '#00d4ff' }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteBlock(block.id)}
+                            sx={{ color: '#ff6b9d' }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
+                      )}
                     </Box>
 
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -368,18 +377,20 @@ const ScheduleBuilder = () => {
       )}
 
       {/* Floating Add Button */}
-      <Fab
-        color="primary"
-        sx={{
-          position: 'fixed',
-          bottom: 32,
-          right: 32,
-          background: 'linear-gradient(45deg, #00d4ff 30%, #ff6b9d 90%)',
-        }}
-        onClick={handleAddBlock}
-      >
-        <AddIcon />
-      </Fab>
+      {canEdit && (
+        <Fab
+          color="primary"
+          sx={{
+            position: 'fixed',
+            bottom: 32,
+            right: 32,
+            background: 'linear-gradient(45deg, #00d4ff 30%, #ff6b9d 90%)',
+          }}
+          onClick={handleAddBlock}
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       {/* Schedule Block Form Dialog */}
       <ScheduleBlockForm

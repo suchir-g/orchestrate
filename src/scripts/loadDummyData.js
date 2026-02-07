@@ -848,6 +848,52 @@ export const loadDummyData = async () => {
       }
     }
 
+    // Create a few test users with roles for quick local testing
+    try {
+      console.log('\n👥 Creating test user accounts and roles...');
+
+      const testUsers = [
+        {
+          name: 'Volunteer User',
+          email: 'volunteer@example.com',
+          roles: [
+            { eventId: eventIdMap['Tech Conference 2026'], role: 'volunteer' },
+            { eventId: eventIdMap['Summer Music Festival'], role: 'volunteer' }
+          ]
+        },
+        {
+          name: 'Admin User',
+          email: 'admin@example.com',
+          roles: [
+            { eventId: eventIdMap['Tech Conference 2026'], role: 'admin' }
+          ]
+        },
+        {
+          name: 'Sponsor User',
+          email: 'sponsor@example.com',
+          roles: [
+            { eventId: eventIdMap['Summer Music Festival'], role: 'sponsor' }
+          ]
+        }
+      ];
+
+      for (const u of testUsers) {
+        const { id, error } = await addDoc(collection(db, COLLECTIONS.USERS), {
+          ...u,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }).then(docRef => ({ id: docRef.id, error: null })).catch(err => ({ id: null, error: err.message }));
+
+        if (error) {
+          console.error(`❌ Error creating user ${u.email}:`, error);
+        } else {
+          console.log(`✅ Created user: ${u.email} (ID: ${id})`);
+        }
+      }
+    } catch (err) {
+      console.error('❌ Failed to create test users:', err);
+    }
+
     console.log('\n✨ Dummy data loaded successfully!');
     console.log('\n📊 Summary:');
     console.log(`   - Events: ${dummyEvents.length}`);

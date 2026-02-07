@@ -9,6 +9,7 @@ import {
   signUpWithEmail,
   logout as firebaseLogout
 } from '../services/firebaseAuthService';
+import * as authService from '../services/authorizationService';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
@@ -25,6 +26,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [userRoles, setUserRoles] = useState({}); // eventId -> role mapping
 
   // Account-scoped wallet state
   const [walletAddress, setWalletAddress] = useState(null);
@@ -187,6 +189,10 @@ export const AuthProvider = ({ children }) => {
 
       if (userDoc.exists()) {
         setUserProfile({ id: userDoc.id, ...userDoc.data() });
+        
+        // Load user roles from authorization service
+        const rolesData = await authService.getUserRolesAllEvents(uid);
+        setUserRoles(rolesData || {});
       } else {
         // Create initial profile if it doesn't exist
         const initialProfile = {
@@ -194,11 +200,13 @@ export const AuthProvider = ({ children }) => {
           displayName: auth.currentUser?.displayName || '',
           photoURL: auth.currentUser?.photoURL || '',
           walletAddress: null,
+          roles: [],
           createdAt: new Date(),
           updatedAt: new Date()
         };
         await setDoc(userDocRef, initialProfile);
         setUserProfile({ id: uid, ...initialProfile });
+        setUserRoles({});
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -303,12 +311,78 @@ export const AuthProvider = ({ children }) => {
       await firebaseLogout();
       setUser(null);
       setUserProfile(null);
+      setUserRoles({});
       toast.success('Signed out successfully!');
       return { error: null };
     } catch (error) {
       toast.error('Failed to sign out');
       return { error: error.message };
     }
+  };
+
+  // Get user's role for a specific event
+  const getUserRoleForEvent = (eventId) => {
+    return userRoles[eventId] || null;
+  };
+
+  // Check if user has permission for a resource in an event
+  const hasPermission = (eventId, resource, action = 'read') => {
+    const role = userRoles[eventId];
+    if (!role) return false;
+    
+    return authService.checkPermission(
+      Array.isArray(role) ? role[0] : role,
+      resource,
+      action
+    );
+  };
+
+  // Check if user has any of the specified permissions
+  const hasAnyPermission = (eventId, permissions) => {
+    const role = userRoles[eventId];
+    if (!role) return false;
+
+    return authService.hasAnyPermission(
+      Array.isArray(role) ? role[0] : role,
+      permissions
+    );
+  };
+
+  // Check if user has all specified permissions
+  const hasAllPermissions = (eventId, permissions) => {
+    const role = userRoles[eventId];
+    if (!role) return false;
+
+    return authService.hasAllPermissions(
+      Array.isArray(role) ? role[0] : role,
+      permissions
+    );
+  };
+
+  // Assign role to a user (admin only)
+  const assignRoleToUser = async (userId, role, eventId) => {
+    if (!user) return { error: 'Not authenticated' };
+
+    // Check if current user is admin
+    const currentUserRole = userRoles[eventId];
+    if (currentUserRole !== 'admin') {
+      return { error: 'Only admins can assign roles' };
+    }
+
+    return await authService.assignUserRole(userId, role, eventId, user.uid);
+  };
+
+  // Remove role from a user (admin only)
+  const removeRoleFromUser = async (userId, role, eventId) => {
+    if (!user) return { error: 'Not authenticated' };
+
+    // Check if current user is admin
+    const currentUserRole = userRoles[eventId];
+    if (currentUserRole !== 'admin') {
+      return { error: 'Only admins can remove roles' };
+    }
+
+    return await authService.removeUserRole(userId, role, eventId);
   };
 
   const value = {
@@ -322,6 +396,14 @@ export const AuthProvider = ({ children }) => {
     updateProfile,
     syncWalletToProfile,
     isAuthenticated: !!user,
+    // Role and permission management
+    userRoles,
+    getUserRoleForEvent,
+    hasPermission,
+    hasAnyPermission,
+    hasAllPermissions,
+    assignRoleToUser,
+    removeRoleFromUser,
     // Account-scoped wallet properties
     walletAddress,
     walletProvider,

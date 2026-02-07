@@ -37,6 +37,7 @@ import {
   PlayArrow as NextStageIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { useAppState } from '../../context/AppStateContext';
 import { getAllScheduleBlocks } from '../../services/scheduleService';
 import { format } from 'date-fns';
@@ -62,6 +63,10 @@ const EventDetail = () => {
       setCurrentEvent(event);
     }
   }, [eventId, events]);
+
+  // Get user's role for this event
+  const { userRoles } = useAuth();
+  const myRole = userRoles ? userRoles[eventId] : null;
 
   // Load schedule blocks
   useEffect(() => {
@@ -383,6 +388,9 @@ const EventDetail = () => {
                 label={currentEvent.status}
                 color={getStatusColor(currentEvent.status)}
               />
+              {myRole && (
+                <Chip label={`Your role: ${Array.isArray(myRole) ? myRole.join(', ') : myRole}`} color="secondary" />
+              )}
             </Box>
           </Box>
 

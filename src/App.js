@@ -24,6 +24,10 @@ import AccountPage from './components/Account/AccountPage';
 // Hackathon features
 import ScheduleBuilder from './components/Scheduling/ScheduleBuilder';
 import EventDetail from './components/EventDetail/EventDetail';
+// New access control components
+import { ProtectedRoute } from './components/Common/ProtectedRoute';
+import SponsorDashboard from './components/Sponsor/SponsorDashboard';
+import UserManagement from './components/Admin/RoleManagement/UserManagement';
 
 import './App.css';
 
@@ -126,9 +130,28 @@ function App() {
                     <Route path="/timeline" element={<EventTimeline />} />
                     <Route path="/account" element={<AccountPage />} />
                     <Route path="/admin/load-data" element={<LoadData />} />
+                    
                     {/* Hackathon features */}
                     <Route path="/event/:eventId" element={<EventDetail />} />
-                    <Route path="/schedule/:eventId" element={<ScheduleBuilder />} />
+                    <Route path="/schedule/:eventId" element={
+                      <ProtectedRoute requiredRole="admin" eventId={null}>
+                        <ScheduleBuilder />
+                      </ProtectedRoute>
+                    } />
+
+                    {/* Sponsor Dashboard - accessible to sponsors */}
+                    <Route path="/sponsor/:eventId" element={
+                      <ProtectedRoute requiredRole="sponsor" eventId={null}>
+                        <SponsorDashboard />
+                      </ProtectedRoute>
+                    } />
+
+                    {/* Admin Role Management - accessible to admins only */}
+                    <Route path="/admin/:eventId/roles" element={
+                      <ProtectedRoute requiredRole="admin" eventId={null}>
+                        <UserManagement />
+                      </ProtectedRoute>
+                    } />
                   </Routes>
                 </main>
                 <Toaster position="top-right" />
