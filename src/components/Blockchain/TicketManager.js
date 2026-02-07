@@ -28,12 +28,12 @@ import {
   Schedule as PendingIcon,
 } from '@mui/icons-material';
 import QRCode from 'react-qr-code';
-import { useBlockchain } from '../../context/BlockchainContext';
+import { useAuth } from '../../context/AuthContext';
 import { useAppState } from '../../context/AppStateContext';
 import toast from 'react-hot-toast';
 
 const TicketManager = () => {
-  const { isConnected, signer } = useBlockchain();
+  const { isWalletConnected, walletSigner, isAuthenticated } = useAuth();
   const { tickets, addTicket, setLoading } = useAppState();
   const [openDialog, setOpenDialog] = useState(false);
   const [openQRDialog, setOpenQRDialog] = useState(false);
@@ -47,7 +47,7 @@ const TicketManager = () => {
   });
 
   const handleCreateTicket = async () => {
-    if (!isConnected) {
+    if (!isWalletConnected) {
       toast.error('Please connect your wallet first');
       return;
     }
@@ -60,7 +60,7 @@ const TicketManager = () => {
         id: Date.now(),
         ...newTicket,
         tokenId: Math.random().toString(36).substring(7),
-        owner: signer?.address || 'Connected Wallet',
+        owner: walletSigner?.address || 'Connected Wallet',
         status: 'minted',
         transactionHash: '0x' + Math.random().toString(16).substring(2, 66),
         createdAt: new Date().toISOString(),
@@ -122,7 +122,7 @@ const TicketManager = () => {
         </Typography>
       </Box>
 
-      {!isConnected && (
+      {!isWalletConnected && (
         <Card sx={{ mb: 3, bgcolor: 'warning.dark', color: 'warning.contrastText' }}>
           <CardContent>
             <Typography variant="h6">🔐 Wallet Connection Required</Typography>
@@ -267,7 +267,7 @@ const TicketManager = () => {
           <Button 
             onClick={handleCreateTicket} 
             variant="contained"
-            disabled={!isConnected || !newTicket.eventName || !newTicket.eventDate}
+            disabled={!isWalletConnected || !newTicket.eventName || !newTicket.eventDate}
           >
             Mint Ticket
           </Button>
@@ -308,7 +308,7 @@ const TicketManager = () => {
         aria-label="add ticket"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
         onClick={() => setOpenDialog(true)}
-        disabled={!isConnected}
+        disabled={!isWalletConnected}
       >
         <AddIcon />
       </Fab>
