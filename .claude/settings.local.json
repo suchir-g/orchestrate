@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)",
+      "Bash(npm install:*)",
+      "Bash(echo \"# OpenAI API Configuration\nREACT_APP_OPENAI_API_KEY=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\")"
+    ]
+  }
+}
