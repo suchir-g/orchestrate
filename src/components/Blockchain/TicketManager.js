@@ -28,12 +28,12 @@ import {
   Schedule as PendingIcon,
 } from '@mui/icons-material';
 import QRCode from 'react-qr-code';
-import { useBlockchain } from '../../context/BlockchainContext';
+import { useAuth } from '../../context/AuthContext';
 import { useAppState } from '../../context/AppStateContext';
 import toast from 'react-hot-toast';
 
 const TicketManager = () => {
-  const { isConnected, signer } = useBlockchain();
+  const { isWalletConnected, walletSigner, isAuthenticated, user } = useAuth();
   const { tickets, addTicket, setLoading } = useAppState();
   const [openDialog, setOpenDialog] = useState(false);
   const [openQRDialog, setOpenQRDialog] = useState(false);
@@ -47,23 +47,27 @@ const TicketManager = () => {
   });
 
   const handleCreateTicket = async () => {
-    if (!isConnected) {
+    if (!user) {
+      toast.error('Please sign in to create tickets');
+      return;
+    }
+
+    if (!isWalletConnected) {
       toast.error('Please connect your wallet first');
       return;
     }
 
     try {
       setLoading({ tickets: true });
-      
+
       // Simulate blockchain interaction
       const ticketData = {
-        id: Date.now(),
         ...newTicket,
+        createdBy: user.uid,
         tokenId: Math.random().toString(36).substring(7),
-        owner: signer?.address || 'Connected Wallet',
+        owner: walletSigner?.address || 'Connected Wallet',
         status: 'minted',
         transactionHash: '0x' + Math.random().toString(16).substring(2, 66),
-        createdAt: new Date().toISOString(),
         blockchainData: {
           network: 'Ethereum',
           contractAddress: '0x742d35Cc8E5f7A4c5b7a3E4c8F5B9E1D2C3F4A5B',
@@ -71,9 +75,9 @@ const TicketManager = () => {
         }
       };
 
-      addTicket(ticketData);
+      await addTicket(ticketData);
       toast.success('Ticket successfully minted to blockchain!');
-      
+
       setNewTicket({
         eventName: '',
         eventDate: '',
@@ -82,7 +86,7 @@ const TicketManager = () => {
         quantity: 1,
       });
       setOpenDialog(false);
-      
+
     } catch (error) {
       toast.error('Failed to mint ticket');
       console.error('Minting error:', error);
@@ -122,7 +126,7 @@ const TicketManager = () => {
         </Typography>
       </Box>
 
-      {!isConnected && (
+      {!isWalletConnected && (
         <Card sx={{ mb: 3, bgcolor: 'warning.dark', color: 'warning.contrastText' }}>
           <CardContent>
             <Typography variant="h6">🔐 Wallet Connection Required</Typography>
@@ -267,7 +271,7 @@ const TicketManager = () => {
           <Button 
             onClick={handleCreateTicket} 
             variant="contained"
-            disabled={!isConnected || !newTicket.eventName || !newTicket.eventDate}
+            disabled={!isWalletConnected || !newTicket.eventName || !newTicket.eventDate}
           >
             Mint Ticket
           </Button>
@@ -308,7 +312,7 @@ const TicketManager = () => {
         aria-label="add ticket"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
         onClick={() => setOpenDialog(true)}
-        disabled={!isConnected}
+        disabled={!isWalletConnected}
       >
         <AddIcon />
       </Fab>

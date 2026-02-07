@@ -1,24 +1,31 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { Box } from '@mui/material';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Toaster } from 'react-hot-toast';
 
 // Context Providers
 import { BlockchainProvider } from './context/BlockchainContext';
 import { AppStateProvider } from './context/AppStateContext';
+import { AuthProvider } from './context/AuthContext';
+
+// Migrations and fixes (expose to window for console access)
+import './utils/migrations';
+import './utils/quickFix';
 
 // Components
-import Navbar from './components/Common/Navbar';
+import Sidebar from './components/Common/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
 import EventTracking from './components/EventTracking/EventTracking';
 import OrderTracking from './components/Logistics/OrderTracking';
 import ShipmentTracking from './components/Logistics/ShipmentTracking';
 import TicketManager from './components/Blockchain/TicketManager';
 import Analytics from './components/Analytics/Analytics';
-import PredictionDashboard from './components/Analytics/PredictionDashboard';
 import LoadData from './components/Admin/LoadData';
 import EventTimeline from './components/Timeline/EventTimeline';
+import AccountPage from './components/Account/AccountPage';
+import MessageCenter from './components/MessageCenter/MessageCenter';
 // Hackathon features
 import ScheduleBuilder from './components/Scheduling/ScheduleBuilder';
 import EventDetail from './components/EventDetail/EventDetail';
@@ -107,30 +114,40 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BlockchainProvider>
-        <AppStateProvider>
-          <Router>
-            <div className="App">
-              <Navbar />
-              <main className="app-main">
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/events" element={<EventTracking />} />
-                  <Route path="/orders" element={<OrderTracking />} />
-                  <Route path="/shipments" element={<ShipmentTracking />} />
-                  <Route path="/tickets" element={<TicketManager />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/predictions" element={<PredictionDashboard />} />
-                  <Route path="/timeline" element={<EventTimeline />} />
-                  <Route path="/admin/load-data" element={<LoadData />} />
-                  {/* Hackathon features */}
-                  <Route path="/event/:eventId" element={<EventDetail />} />
-                  <Route path="/schedule/:eventId" element={<ScheduleBuilder />} />
-                </Routes>
-              </main>
-              <Toaster position="top-right" />
-            </div>
-          </Router>
-        </AppStateProvider>
+        <AuthProvider>
+          <AppStateProvider>
+            <Router>
+              <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+                <Sidebar />
+                <Box
+                  component="main"
+                  sx={{
+                    flexGrow: 1,
+                    width: { xs: '100%', sm: 'calc(100% - 240px)' },
+                    overflow: 'auto',
+                  }}
+                >
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/events" element={<EventTracking />} />
+                    <Route path="/orders" element={<OrderTracking />} />
+                    <Route path="/shipments" element={<ShipmentTracking />} />
+                    <Route path="/tickets" element={<TicketManager />} />
+                    <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/timeline" element={<EventTimeline />} />
+                    <Route path="/account" element={<AccountPage />} />
+                    <Route path="/messages" element={<MessageCenter />} />
+                    <Route path="/admin/load-data" element={<LoadData />} />
+                    {/* Hackathon features */}
+                    <Route path="/event/:eventId" element={<EventDetail />} />
+                    <Route path="/schedule/:eventId" element={<ScheduleBuilder />} />
+                  </Routes>
+                </Box>
+                <Toaster position="top-right" />
+              </Box>
+            </Router>
+          </AppStateProvider>
+        </AuthProvider>
       </BlockchainProvider>
     </ThemeProvider>
   );

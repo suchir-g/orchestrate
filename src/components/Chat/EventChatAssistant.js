@@ -11,6 +11,10 @@ import {
   Drawer,
   AppBar,
   Toolbar,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -19,30 +23,43 @@ import {
   Close as CloseIcon,
 } from '@mui/icons-material';
 import { chatWithEventAssistant, buildEventContext, generateSuggestedQuestions } from '../../services/openaiService';
+import { useAppState } from '../../context/AppStateContext';
 import toast from 'react-hot-toast';
 
-const EventChatAssistant = ({ event, relatedOrders = [], relatedTickets = [], open, onClose }) => {
+const EventChatAssistant = ({ event: initialEvent, relatedOrders: initialOrders = [], relatedTickets: initialTickets = [], open, onClose }) => {
+  const { events = [], orders = [], tickets = [] } = useAppState();
+  const [selectedEventId, setSelectedEventId] = useState(initialEvent?.id || null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [suggestedQuestions, setSuggestedQuestions] = useState([]);
   const messagesEndRef = useRef(null);
 
+  // Get current event and related data based on selectedEventId
+  const event = events.find(e => e.id === selectedEventId) || initialEvent;
+  const relatedOrders = selectedEventId ? orders.filter(o => o.eventId === selectedEventId) : initialOrders;
+  const relatedTickets = selectedEventId ? tickets.filter(t => t.eventId === selectedEventId) : initialTickets;
+
+  // Update selectedEventId when initialEvent changes
+  useEffect(() => {
+    if (initialEvent?.id) {
+      setSelectedEventId(initialEvent.id);
+    }
+  }, [initialEvent]);
+
   useEffect(() => {
     if (event && open) {
       // Generate suggested questions when event changes
       setSuggestedQuestions(generateSuggestedQuestions(event));
 
-      // Add welcome message if no messages yet
-      if (messages.length === 0) {
-        setMessages([{
-          role: 'assistant',
-          content: `Hi! I'm your AI assistant for **${event.name}**. I can help you with information about tasks, schedules, tickets, merchandise, and timelines. What would you like to know?`,
-          timestamp: new Date()
-        }]);
-      }
+      // Reset messages when event changes
+      setMessages([{
+        role: 'assistant',
+        content: `Hi! I'm your AI assistant for **${event.name}**. I can help you with information about tasks, schedules, tickets, merchandise, and timelines. What would you like to know?`,
+        timestamp: new Date()
+      }]);
     }
-  }, [event, open]);
+  }, [event?.id, open]);
 
   useEffect(() => {
     // Scroll to bottom when messages change
@@ -137,9 +154,46 @@ const EventChatAssistant = ({ event, relatedOrders = [], relatedTickets = [], op
             <BotIcon />
           </Avatar>
           <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
               Event AI Assistant
             </Typography>
+            {/* Event Selector */}
+            {events.length > 0 && (
+              <FormControl size="small" fullWidth sx={{ mt: 1 }}>
+                <Select
+                  value={selectedEventId || ''}
+                  onChange={(e) => setSelectedEventId(e.target.value)}
+                  displayEmpty
+                  sx={{
+                    color: '#00d4ff',
+                    fontSize: '0.875rem',
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'rgba(0, 212, 255, 0.3)',
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'rgba(0, 212, 255, 0.5)',
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: '#00d4ff',
+                    },
+                  }}
+                >
+                  <MenuItem value="" disabled>
+                    <em>Select an event...</em>
+                  </MenuItem>
+                  {events.map((evt) => (
+                    <MenuItem key={evt.id} value={evt.id}>
+                      {evt.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            {!event && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                Please select an event to start chatting
+              </Typography>
+            )}
             <Typography variant="caption" color="text.secondary">
               {event?.name || 'No event selected'}
             </Typography>

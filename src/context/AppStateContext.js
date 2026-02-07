@@ -1,8 +1,21 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { listenToEvents, listenToOrders, listenToTickets } from '../services/firebaseDbService';
+import {
+  listenToUserEvents,
+  listenToUserOrders,
+  listenToUserTickets,
+  createEventWithCollaboration,
+  createOrder,
+  createTicket,
+  updateEvent as updateEventInDb,
+  updateOrder as updateOrderInDb,
+  updateTicket as updateTicketInDb
+} from '../services/firebaseDbService';
 import { listenToScheduleBlocks } from '../services/scheduleService';
 import { listenToVolunteers } from '../services/volunteerService';
 import { listenToVolunteerTasks } from '../services/volunteerTaskService';
+import { initializeActivityTracking, clearActivities } from '../services/activityService';
+import { getUserAccessibleEvents } from '../services/accessControlService';
+import { useAuth } from './AuthContext';
 
 const AppStateContext = createContext();
 
@@ -205,21 +218,74 @@ const appReducer = (state, action) => {
 
 export const AppStateProvider = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const { user, userRole } = useAuth();
 
   // Action creators
   const actions = {
     setEvents: (events) => dispatch({ type: ActionTypes.SET_EVENTS, payload: events }),
-    addEvent: (event) => dispatch({ type: ActionTypes.ADD_EVENT, payload: event }),
-    updateEvent: (event) => dispatch({ type: ActionTypes.UPDATE_EVENT, payload: event }),
+    addEvent: async (event) => {
+      // Write to Firestore with RBAC fields - listeners will update local state
+      if (!user) {
+        console.error('User must be authenticated to create events');
+        return { id: null, error: 'User not authenticated' };
+      }
+      const { id, error } = await createEventWithCollaboration(event, user.uid);
+      if (error) {
+        console.error('Error creating event:', error);
+        throw new Error(error);
+      }
+      return { id, error };
+    },
+    updateEvent: async (event) => {
+      const { id, ...updateData } = event;
+      const { error } = await updateEventInDb(id, updateData);
+      if (error) {
+        console.error('Error updating event:', error);
+        throw new Error(error);
+      }
+      return { error };
+    },
     setOrders: (orders) => dispatch({ type: ActionTypes.SET_ORDERS, payload: orders }),
-    addOrder: (order) => dispatch({ type: ActionTypes.ADD_ORDER, payload: order }),
-    updateOrder: (order) => dispatch({ type: ActionTypes.UPDATE_ORDER, payload: order }),
+    addOrder: async (order) => {
+      // Write to Firestore - listeners will update local state
+      const { id, error } = await createOrder(order);
+      if (error) {
+        console.error('Error creating order:', error);
+        throw new Error(error);
+      }
+      return { id, error };
+    },
+    updateOrder: async (order) => {
+      const { id, ...updateData } = order;
+      const { error } = await updateOrderInDb(id, updateData);
+      if (error) {
+        console.error('Error updating order:', error);
+        throw new Error(error);
+      }
+      return { error };
+    },
     setShipments: (shipments) => dispatch({ type: ActionTypes.SET_SHIPMENTS, payload: shipments }),
     addShipment: (shipment) => dispatch({ type: ActionTypes.ADD_SHIPMENT, payload: shipment }),
     updateShipment: (shipment) => dispatch({ type: ActionTypes.UPDATE_SHIPMENT, payload: shipment }),
     setTickets: (tickets) => dispatch({ type: ActionTypes.SET_TICKETS, payload: tickets }),
-    addTicket: (ticket) => dispatch({ type: ActionTypes.ADD_TICKET, payload: ticket }),
-    updateTicket: (ticket) => dispatch({ type: ActionTypes.UPDATE_TICKET, payload: ticket }),
+    addTicket: async (ticket) => {
+      // Write to Firestore - listeners will update local state
+      const { id, error } = await createTicket(ticket);
+      if (error) {
+        console.error('Error creating ticket:', error);
+        throw new Error(error);
+      }
+      return { id, error };
+    },
+    updateTicket: async (ticket) => {
+      const { id, ...updateData } = ticket;
+      const { error } = await updateTicketInDb(id, updateData);
+      if (error) {
+        console.error('Error updating ticket:', error);
+        throw new Error(error);
+      }
+      return { error };
+    },
     setAnalytics: (analytics) => dispatch({ type: ActionTypes.SET_ANALYTICS, payload: analytics }),
     setPredictions: (predictions) => dispatch({ type: ActionTypes.SET_PREDICTIONS, payload: predictions }),
     setLoading: (loading) => dispatch({ type: ActionTypes.SET_LOADING, payload: loading }),
@@ -242,25 +308,59 @@ export const AppStateProvider = ({ children }) => {
 
   // Listen to Firebase real-time updates
   useEffect(() => {
-    console.log('🔥 Setting up Firebase listeners...');
+    // Only set up listeners if user is authenticated
+    if (!user) {
+      console.log('⏸️  No user authenticated, skipping Firebase listeners');
+      // Clear state when user logs out
+      dispatch({ type: ActionTypes.SET_EVENTS, payload: [] });
+      dispatch({ type: ActionTypes.SET_ORDERS, payload: [] });
+      dispatch({ type: ActionTypes.SET_TICKETS, payload: [] });
+      // Note: We don't clear activities on logout to preserve history
+      return;
+    }
 
-    // Listen to events
-    const unsubscribeEvents = listenToEvents((events) => {
-      console.log('📅 Events updated from Firebase:', events.length);
-      dispatch({ type: ActionTypes.SET_EVENTS, payload: events });
+    console.log('🔥 Setting up user-scoped Firebase listeners for user:', user.uid);
+
+    // Fetch ALL accessible events (including collaborated, volunteer, sponsor events)
+    const fetchAccessibleEvents = async () => {
+      const currentUserRole = userRole || 'attendee';
+      const { data: accessibleEvents, error } = await getUserAccessibleEvents(user.uid, currentUserRole);
+
+      if (!error && accessibleEvents) {
+        console.log(`📅 Accessible events loaded for role "${currentUserRole}":`, accessibleEvents.length);
+        dispatch({ type: ActionTypes.SET_EVENTS, payload: accessibleEvents });
+      } else if (error) {
+        console.error('Error loading accessible events:', error);
+      }
+    };
+
+    // Initial fetch
+    fetchAccessibleEvents();
+
+    // Set up real-time listener for user's owned events (for immediate updates)
+    const unsubscribeEvents = listenToUserEvents(user.uid, (ownedEvents) => {
+      console.log('📅 User owned events updated from Firebase:', ownedEvents.length);
+      // Re-fetch all accessible events to include collaborated events
+      fetchAccessibleEvents();
     });
 
-    // Listen to orders
-    const unsubscribeOrders = listenToOrders((orders) => {
-      console.log('📦 Orders updated from Firebase:', orders.length);
+    // Periodic refresh for collaborated events (every 30 seconds)
+    const refreshInterval = setInterval(fetchAccessibleEvents, 30000);
+
+    // Listen to user's orders
+    const unsubscribeOrders = listenToUserOrders(user.uid, (orders) => {
+      console.log('📦 User orders updated from Firebase:', orders.length);
       dispatch({ type: ActionTypes.SET_ORDERS, payload: orders });
     });
 
-    // Listen to tickets
-    const unsubscribeTickets = listenToTickets((tickets) => {
-      console.log('🎫 Tickets updated from Firebase:', tickets.length);
+    // Listen to user's tickets
+    const unsubscribeTickets = listenToUserTickets(user.uid, (tickets) => {
+      console.log('🎫 User tickets updated from Firebase:', tickets.length);
       dispatch({ type: ActionTypes.SET_TICKETS, payload: tickets });
     });
+
+    // Initialize activity tracking
+    const unsubscribeActivities = initializeActivityTracking(user.uid, ['events', 'orders', 'tickets']);
 
     // TODO: Add event selection state and enable hackathon listeners
     // Once we have a selectedEventId state, uncomment these listeners:
@@ -282,16 +382,18 @@ export const AppStateProvider = ({ children }) => {
 
     // Cleanup listeners on unmount
     return () => {
-      console.log('🔥 Cleaning up Firebase listeners...');
+      console.log('🔥 Cleaning up user-scoped Firebase listeners...');
       unsubscribeEvents();
       unsubscribeOrders();
       unsubscribeTickets();
+      unsubscribeActivities();
+      clearInterval(refreshInterval);
       // Add cleanup for hackathon listeners when enabled:
       // unsubscribeScheduleBlocks();
       // unsubscribeVolunteers();
       // unsubscribeVolunteerTasks();
     };
-  }, []); // Add selectedEventId to dependency array when implementing event selection
+  }, [user, userRole]); // Re-run when user changes (login/logout) or role changes
 
   const value = {
     ...state,

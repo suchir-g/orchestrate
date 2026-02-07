@@ -37,10 +37,12 @@ import {
   Person as PersonIcon,
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
+import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const OrderTracking = () => {
   const { orders, addOrder, updateOrder, setLoading } = useAppState();
+  const { user } = useAuth();
   const [openDialog, setOpenDialog] = useState(false);
   const [tabValue, setTabValue] = useState(0);
   const [newOrder, setNewOrder] = useState({
@@ -55,43 +57,51 @@ const OrderTracking = () => {
   const orderStatuses = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
   const priorityLevels = ['Low', 'Normal', 'High', 'Urgent'];
 
-  const handleCreateOrder = () => {
+  const handleCreateOrder = async () => {
+    if (!user) {
+      toast.error('Please sign in to create orders');
+      return;
+    }
+
     if (!newOrder.customerName || !newOrder.items || !newOrder.totalAmount) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    const orderData = {
-      id: Date.now(),
-      orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
-      ...newOrder,
-      status: 'Pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
-      trackingNumber: `TRK${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-      timeline: [
-        {
-          status: 'Order Placed',
-          timestamp: new Date().toISOString(),
-          description: 'Order has been placed and is pending confirmation',
-          location: 'Order Management System',
-        },
-      ],
-    };
+    try {
+      const orderData = {
+        orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
+        ...newOrder,
+        createdBy: user.uid,
+        status: 'Pending',
+        estimatedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
+        trackingNumber: `TRK${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+        timeline: [
+          {
+            status: 'Order Placed',
+            timestamp: new Date().toISOString(),
+            description: 'Order has been placed and is pending confirmation',
+            location: 'Order Management System',
+          },
+        ],
+      };
 
-    addOrder(orderData);
-    toast.success('Order created successfully!');
-    
-    setNewOrder({
-      customerName: '',
-      customerEmail: '',
-      items: '',
-      totalAmount: '',
-      shippingAddress: '',
-      priority: 'Normal',
-    });
-    setOpenDialog(false);
+      await addOrder(orderData);
+      toast.success('Order created successfully!');
+
+      setNewOrder({
+        customerName: '',
+        customerEmail: '',
+        items: '',
+        totalAmount: '',
+        shippingAddress: '',
+        priority: 'Normal',
+      });
+      setOpenDialog(false);
+    } catch (error) {
+      console.error('Error creating order:', error);
+      toast.error('Failed to create order');
+    }
   };
 
   const handleUpdateOrderStatus = (orderId, newStatus) => {

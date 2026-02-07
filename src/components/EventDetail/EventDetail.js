@@ -35,10 +35,18 @@ import {
   Clear as ClearIcon,
   Warning as WarningIcon,
   PlayArrow as NextStageIcon,
+  Share as ShareIcon,
+  Message as MessageIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppState } from '../../context/AppStateContext';
+import { useAuth } from '../../context/AuthContext';
 import { getAllScheduleBlocks } from '../../services/scheduleService';
+import EventSharing from '../EventSharing/EventSharing';
+import EnhancedEventCollaboration from '../EventCollaboration/EnhancedEventCollaboration';
+import EventTeam from '../EventTeam/EventTeam';
+import { getUserEventRole } from '../../services/accessControlService';
+import { EVENT_ROLES, PERMISSIONS, hasEventPermission } from '../../utils/roleConstants';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -46,14 +54,18 @@ const EventDetail = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { events, orders, shipments } = useAppState();
+  const { user, userRole } = useAuth();
 
   const [currentEvent, setCurrentEvent] = useState(null);
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [scheduleBlocks, setLocalScheduleBlocks] = useState([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processingStage, setProcessingStage] = useState(false);
+  const [userEventRole, setUserEventRole] = useState(null);
 
   // Load event details
   useEffect(() => {
@@ -62,6 +74,18 @@ const EventDetail = () => {
       setCurrentEvent(event);
     }
   }, [eventId, events]);
+
+  // Load user's event role
+  useEffect(() => {
+    const loadUserEventRole = async () => {
+      if (!eventId || !user) return;
+
+      const role = await getUserEventRole(eventId, user.uid, userRole);
+      setUserEventRole(role);
+    };
+
+    loadUserEventRole();
+  }, [eventId, user, userRole]);
 
   // Load schedule blocks
   useEffect(() => {
@@ -96,6 +120,17 @@ const EventDetail = () => {
   const handleOpenValidation = () => {
     setValidationDialogOpen(true);
   };
+
+  // Permission check helpers
+  const canShareEvent = useMemo(() => {
+    if (!userEventRole) return false;
+    return hasEventPermission(userEventRole, PERMISSIONS.EVENT_SHARE);
+  }, [userEventRole]);
+
+  const canEditEvent = useMemo(() => {
+    if (!userEventRole) return false;
+    return hasEventPermission(userEventRole, PERMISSIONS.EVENT_EDIT);
+  }, [userEventRole]);
 
   const handleCloseValidation = () => {
     setValidationDialogOpen(false);
@@ -387,37 +422,62 @@ const EventDetail = () => {
           </Box>
 
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button
-              variant="contained"
-              startIcon={<EditIcon />}
-              onClick={() => navigate(`/schedule/${eventId}`)}
-              sx={{
-                background: 'linear-gradient(45deg, #00d4ff 30%, #ff6b9d 90%)',
-              }}
-            >
-              Manage Schedule
-            </Button>
+            {canShareEvent && (
+              <Button
+                variant="outlined"
+                startIcon={<ShareIcon />}
+                onClick={() => setSharingOpen(true)}
+              >
+                Share
+              </Button>
+            )}
 
-            <Tooltip
-              title={allChecksPassed ? 'All requirements met - ready to proceed' : 'Complete all requirements first'}
-            >
-              <span>
-                <Button
-                  variant="contained"
-                  startIcon={allChecksPassed ? <CheckIcon /> : <WarningIcon />}
-                  endIcon={<NextStageIcon />}
-                  onClick={handleOpenValidation}
-                  disabled={currentEvent?.status === 'completed'}
-                  sx={{
-                    background: allChecksPassed
-                      ? 'linear-gradient(45deg, #4caf50 30%, #66bb6a 90%)'
-                      : 'linear-gradient(45deg, #ff9800 30%, #ffa726 90%)',
-                  }}
-                >
-                  {currentEvent?.status === 'completed' ? 'Completed' : 'Next Stage'}
-                </Button>
-              </span>
-            </Tooltip>
+            {/* Collaborate button - visible to all collaborators */}
+            {userEventRole && (
+              <Button
+                variant="outlined"
+                startIcon={<MessageIcon />}
+                onClick={() => setCollaborationOpen(true)}
+              >
+                Collaborate
+              </Button>
+            )}
+
+            {canEditEvent && (
+              <Button
+                variant="contained"
+                startIcon={<EditIcon />}
+                onClick={() => navigate(`/schedule/${eventId}`)}
+                sx={{
+                  background: 'linear-gradient(45deg, #00d4ff 30%, #ff6b9d 90%)',
+                }}
+              >
+                Manage Schedule
+              </Button>
+            )}
+
+            {canEditEvent && (
+              <Tooltip
+                title={allChecksPassed ? 'All requirements met - ready to proceed' : 'Complete all requirements first'}
+              >
+                <span>
+                  <Button
+                    variant="contained"
+                    startIcon={allChecksPassed ? <CheckIcon /> : <WarningIcon />}
+                    endIcon={<NextStageIcon />}
+                    onClick={handleOpenValidation}
+                    disabled={currentEvent?.status === 'completed'}
+                    sx={{
+                      background: allChecksPassed
+                        ? 'linear-gradient(45deg, #4caf50 30%, #66bb6a 90%)'
+                        : 'linear-gradient(45deg, #ff9800 30%, #ffa726 90%)',
+                    }}
+                  >
+                    {currentEvent?.status === 'completed' ? 'Completed' : 'Next Stage'}
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
           </Box>
         </Box>
       </Box>
@@ -644,6 +704,18 @@ const EventDetail = () => {
           ))}
         </Box>
       )}
+
+      {/* Event Team Members */}
+      <Box sx={{ mb: 4 }}>
+        <EventTeam
+          event={currentEvent}
+          userEventRole={userEventRole}
+          onMessageUser={(member, role) => {
+            // Open collaboration dialog with pre-selected recipient
+            setCollaborationOpen(true);
+          }}
+        />
+      </Box>
 
       {/* Detail Dialog */}
       <Dialog
@@ -963,6 +1035,27 @@ const EventDetail = () => {
           </Box>
         </DialogContent>
       </Dialog>
+
+      {/* Event Sharing Dialog */}
+      <EventSharing
+        open={sharingOpen}
+        onClose={() => setSharingOpen(false)}
+        event={currentEvent}
+        onUpdate={() => {
+          // Refresh event data
+          if (eventId && events.length > 0) {
+            const event = events.find(e => e.id === eventId);
+            setCurrentEvent(event);
+          }
+        }}
+      />
+
+      {/* Event Collaboration Dialog */}
+      <EnhancedEventCollaboration
+        open={collaborationOpen}
+        onClose={() => setCollaborationOpen(false)}
+        event={currentEvent}
+      />
     </Container>
   );
 };

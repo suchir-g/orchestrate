@@ -163,6 +163,11 @@ export const getUserDocuments = async (collectionName, userId) => {
   return getDocumentsByField(collectionName, 'userId', userId);
 };
 
+// Get documents by creator ID (for user-scoped data)
+export const getUserCreatedDocuments = async (collectionName, userId) => {
+  return getDocumentsByField(collectionName, 'createdBy', userId);
+};
+
 // Get recent documents
 export const getRecentDocuments = async (collectionName, limitCount = 10) => {
   return getAllDocuments(collectionName, [
@@ -209,29 +214,53 @@ export const batchWrite = async (operations) => {
 
 // ========== SPECIFIC COLLECTIONS ==========
 
-// Events
+// Events (user-scoped)
 export const createEvent = (eventData) => createDocument(COLLECTIONS.EVENTS, eventData);
 export const getEvent = (eventId) => getDocument(COLLECTIONS.EVENTS, eventId);
 export const getAllEvents = () => getAllDocuments(COLLECTIONS.EVENTS);
+export const getUserEvents = (userId) => getUserCreatedDocuments(COLLECTIONS.EVENTS, userId);
 export const updateEvent = (eventId, data) => updateDocument(COLLECTIONS.EVENTS, eventId, data);
 export const deleteEvent = (eventId) => deleteDocument(COLLECTIONS.EVENTS, eventId);
 export const listenToEvents = (callback) => listenToCollection(COLLECTIONS.EVENTS, [], callback);
+export const listenToUserEvents = (userId, callback) => {
+  return listenToCollection(COLLECTIONS.EVENTS, [where('createdBy', '==', userId)], callback);
+};
 
-// Orders
+// Create event with collaboration fields
+export const createEventWithCollaboration = async (eventData, userId) => {
+  const eventWithCollaboration = {
+    ...eventData,
+    createdBy: userId,
+    organizers: [userId], // Creator is automatically an organizer
+    collaborators: [], // Empty initially, can be added later
+    volunteers: [],
+    sponsors: [],
+    visibility: eventData.visibility || 'private', // Default to private
+  };
+  return createDocument(COLLECTIONS.EVENTS, eventWithCollaboration);
+};
+
+// Orders (user-scoped)
 export const createOrder = (orderData) => createDocument(COLLECTIONS.ORDERS, orderData);
 export const getOrder = (orderId) => getDocument(COLLECTIONS.ORDERS, orderId);
 export const getAllOrders = () => getAllDocuments(COLLECTIONS.ORDERS);
 export const updateOrder = (orderId, data) => updateDocument(COLLECTIONS.ORDERS, orderId, data);
 export const getUserOrders = (userId) => getUserDocuments(COLLECTIONS.ORDERS, userId);
 export const listenToOrders = (callback) => listenToCollection(COLLECTIONS.ORDERS, [], callback);
+export const listenToUserOrders = (userId, callback) => {
+  return listenToCollection(COLLECTIONS.ORDERS, [where('createdBy', '==', userId)], callback);
+};
 
-// Tickets
+// Tickets (user-scoped)
 export const createTicket = (ticketData) => createDocument(COLLECTIONS.TICKETS, ticketData);
 export const getTicket = (ticketId) => getDocument(COLLECTIONS.TICKETS, ticketId);
 export const getAllTickets = () => getAllDocuments(COLLECTIONS.TICKETS);
 export const updateTicket = (ticketId, data) => updateDocument(COLLECTIONS.TICKETS, ticketId, data);
 export const getUserTickets = (userId) => getUserDocuments(COLLECTIONS.TICKETS, userId);
 export const listenToTickets = (callback) => listenToCollection(COLLECTIONS.TICKETS, [], callback);
+export const listenToUserTickets = (userId, callback) => {
+  return listenToCollection(COLLECTIONS.TICKETS, [where('createdBy', '==', userId)], callback);
+};
 
 // Users
 export const createUserProfile = (userId, userData) => {

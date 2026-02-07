@@ -35,17 +35,27 @@ import {
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as UncompletedIcon,
   Timeline as TimelineIcon,
+  Share as ShareIcon,
+  MoreVert as MoreIcon,
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
+import { useAuth } from '../../context/AuthContext';
+import EventSharing from '../EventSharing/EventSharing';
+import { getUserEventRole } from '../../services/accessControlService';
+import { PERMISSIONS, hasEventPermission } from '../../utils/roleConstants';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 const EventTracking = () => {
   const { events, addEvent, updateEvent, setLoading } = useAppState();
+  const { user, userRole } = useAuth();
   const navigate = useNavigate();
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const [eventToShare, setEventToShare] = useState(null);
   const [tabValue, setTabValue] = useState(0);
+  const [eventRoles, setEventRoles] = useState({});
   const [newEvent, setNewEvent] = useState({
     name: '',
     description: '',
@@ -59,47 +69,78 @@ const EventTracking = () => {
   const eventStatuses = ['Planning', 'Confirmed', 'In Progress', 'Completed', 'Cancelled'];
   const eventCategories = ['Conference', 'Workshop', 'Concert', 'Sports', 'Exhibition', 'Other'];
 
-  const handleCreateEvent = () => {
+  // Load event roles for all events
+  useEffect(() => {
+    const loadEventRoles = async () => {
+      if (!user || !events.length) return;
+
+      const roles = {};
+      for (const event of events) {
+        const role = await getUserEventRole(event.id, user.uid, userRole);
+        roles[event.id] = role;
+      }
+      setEventRoles(roles);
+    };
+
+    loadEventRoles();
+  }, [events, user, userRole]);
+
+  // Helper to check if user can share an event
+  const canShareEvent = (eventId) => {
+    const role = eventRoles[eventId];
+    if (!role) return false;
+    return hasEventPermission(role, PERMISSIONS.EVENT_SHARE);
+  };
+
+  const handleCreateEvent = async () => {
+    if (!user) {
+      toast.error('Please sign in to create events');
+      return;
+    }
+
     if (!newEvent.name || !newEvent.date || !newEvent.location) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    const eventData = {
-      id: Date.now(),
-      ...newEvent,
-      status: 'Planning',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      timeline: [
-        {
-          step: 'Event Created',
-          timestamp: new Date().toISOString(),
-          status: 'completed',
-          description: 'Event has been created and is in planning phase',
+    try {
+      const eventData = {
+        ...newEvent,
+        createdBy: user.uid,
+        status: 'Planning',
+        timeline: [
+          {
+            step: 'Event Created',
+            timestamp: new Date().toISOString(),
+            status: 'completed',
+            description: 'Event has been created and is in planning phase',
+          },
+        ],
+        attendees: 0,
+        tickets: {
+          total: parseInt(newEvent.capacity) || 0,
+          sold: 0,
+          available: parseInt(newEvent.capacity) || 0,
         },
-      ],
-      attendees: 0,
-      tickets: {
-        total: parseInt(newEvent.capacity) || 0,
-        sold: 0,
-        available: parseInt(newEvent.capacity) || 0,
-      },
-    };
+      };
 
-    addEvent(eventData);
-    toast.success('Event created successfully!');
-    
-    setNewEvent({
-      name: '',
-      description: '',
-      date: '',
-      location: '',
-      capacity: '',
-      organizer: '',
-      category: '',
-    });
-    setOpenDialog(false);
+      await addEvent(eventData);
+      toast.success('Event created successfully!');
+
+      setNewEvent({
+        name: '',
+        description: '',
+        date: '',
+        location: '',
+        capacity: '',
+        organizer: '',
+        category: '',
+      });
+      setOpenDialog(false);
+    } catch (error) {
+      console.error('Error creating event:', error);
+      toast.error('Failed to create event');
+    }
   };
 
   const getStatusColor = (status) => {
@@ -173,7 +214,21 @@ const EventTracking = () => {
           </Box>
         </Box>
 
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+          {canShareEvent(event.id) && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ShareIcon />}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEventToShare(event);
+                setSharingOpen(true);
+              }}
+            >
+              Share
+            </Button>
+          )}
           <Button
             variant="outlined"
             size="small"
@@ -606,6 +661,19 @@ const EventTracking = () => {
       >
         <AddIcon />
       </Fab>
+
+      {/* Event Sharing Dialog */}
+      <EventSharing
+        open={sharingOpen}
+        onClose={() => {
+          setSharingOpen(false);
+          setEventToShare(null);
+        }}
+        event={eventToShare}
+        onUpdate={() => {
+          // Event data will refresh automatically via AppStateContext
+        }}
+      />
     </Container>
   );
 };
