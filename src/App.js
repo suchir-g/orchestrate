@@ -7,6 +7,7 @@ import { Toaster } from 'react-hot-toast';
 // Context Providers
 import { BlockchainProvider } from './context/BlockchainContext';
 import { AppStateProvider } from './context/AppStateContext';
+import { AuthProvider } from './context/AuthContext';
 
 // Components
 import Navbar from './components/Common/Navbar';
@@ -19,6 +20,7 @@ import Analytics from './components/Analytics/Analytics';
 import PredictionDashboard from './components/Analytics/PredictionDashboard';
 import LoadData from './components/Admin/LoadData';
 import EventTimeline from './components/Timeline/EventTimeline';
+import AccountPage from './components/Account/AccountPage';
 // Hackathon features
 import ScheduleBuilder from './components/Scheduling/ScheduleBuilder';
 import EventDetail from './components/EventDetail/EventDetail';
@@ -107,30 +109,33 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BlockchainProvider>
-        <AppStateProvider>
-          <Router>
-            <div className="App">
-              <Navbar />
-              <main className="app-main">
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/events" element={<EventTracking />} />
-                  <Route path="/orders" element={<OrderTracking />} />
-                  <Route path="/shipments" element={<ShipmentTracking />} />
-                  <Route path="/tickets" element={<TicketManager />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/predictions" element={<PredictionDashboard />} />
-                  <Route path="/timeline" element={<EventTimeline />} />
-                  <Route path="/admin/load-data" element={<LoadData />} />
-                  {/* Hackathon features */}
-                  <Route path="/event/:eventId" element={<EventDetail />} />
-                  <Route path="/schedule/:eventId" element={<ScheduleBuilder />} />
-                </Routes>
-              </main>
-              <Toaster position="top-right" />
-            </div>
-          </Router>
-        </AppStateProvider>
+        <AuthProvider>
+          <AppStateProvider>
+            <Router>
+              <div className="App">
+                <Navbar />
+                <main className="app-main">
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/events" element={<EventTracking />} />
+                    <Route path="/orders" element={<OrderTracking />} />
+                    <Route path="/shipments" element={<ShipmentTracking />} />
+                    <Route path="/tickets" element={<TicketManager />} />
+                    <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/predictions" element={<PredictionDashboard />} />
+                    <Route path="/timeline" element={<EventTimeline />} />
+                    <Route path="/account" element={<AccountPage />} />
+                    <Route path="/admin/load-data" element={<LoadData />} />
+                    {/* Hackathon features */}
+                    <Route path="/event/:eventId" element={<EventDetail />} />
+                    <Route path="/schedule/:eventId" element={<ScheduleBuilder />} />
+                  </Routes>
+                </main>
+                <Toaster position="top-right" />
+              </div>
+            </Router>
+          </AppStateProvider>
+        </AuthProvider>
       </BlockchainProvider>
     </ThemeProvider>
   );

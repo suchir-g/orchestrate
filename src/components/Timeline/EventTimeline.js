@@ -22,6 +22,11 @@ import {
   StepContent,
   Divider,
   Fab,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Button,
 } from '@mui/material';
 import {
   CalendarMonth as CalendarIcon,
@@ -37,17 +42,110 @@ import {
   LocalShipping as ShippingIcon,
   ConfirmationNumber as TicketIcon,
   SmartToy as AiIcon,
+  ChevronLeft,
+  ChevronRight,
+  ViewWeek as WeekViewIcon,
+  ViewModule as MonthViewIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
-import { format, parseISO, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+import { format, parseISO, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, addDays, isSameMonth, addMonths, subMonths } from 'date-fns';
+import { getAllScheduleBlocks } from '../../services/scheduleService';
 import EventChatAssistant from '../Chat/EventChatAssistant';
 
 const EventTimeline = () => {
-  const { events = [], orders = [], tickets = [] } = useAppState();
-  const [view, setView] = useState('gantt'); // 'gantt', 'project'
+  const { events = [], orders = [], tickets = [], shipments = [] } = useAppState();
+  const navigate = useNavigate();
+  const [view, setView] = useState('calendar'); // 'calendar', 'project'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedProject, setSelectedProject] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [dayDialogOpen, setDayDialogOpen] = useState(false);
+  const [allScheduleBlocks, setAllScheduleBlocks] = useState([]);
+
+  // Load all schedule blocks for all events
+  useEffect(() => {
+    const loadAllScheduleBlocks = async () => {
+      const allBlocks = [];
+      for (const event of events) {
+        const { data, error } = await getAllScheduleBlocks(event.id);
+        if (!error && data) {
+          allBlocks.push(...data.map(block => ({ ...block, eventId: event.id })));
+        }
+      }
+      setAllScheduleBlocks(allBlocks);
+    };
+
+    if (events.length > 0) {
+      loadAllScheduleBlocks();
+    }
+  }, [events]);
+
+  // Get calendar month days
+  const getCalendarDays = () => {
+    const monthStart = startOfMonth(currentDate);
+    const monthEnd = endOfMonth(currentDate);
+    const calendarStart = startOfWeek(monthStart);
+    const calendarEnd = endOfWeek(monthEnd);
+
+    return eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+  };
+
+  const calendarDays = getCalendarDays();
+
+  // Get events for a specific day
+  const getEventsForDay = (day) => {
+    return events.filter(event => {
+      if (!event || !event.date) return false;
+      try {
+        const eventDate = parseISO(event.date);
+        return isSameDay(eventDate, day);
+      } catch (error) {
+        return false;
+      }
+    });
+  };
+
+  // Get schedule blocks for a specific day
+  const getScheduleBlocksForDay = (day) => {
+    return allScheduleBlocks.filter(block => {
+      if (!block || !block.date) return false;
+      try {
+        const blockDate = parseISO(block.date);
+        return isSameDay(blockDate, day);
+      } catch (error) {
+        return false;
+      }
+    });
+  };
+
+  // Get orders for a specific day
+  const getOrdersForDay = (day) => {
+    return orders.filter(order => {
+      if (!order || !order.orderDate) return false;
+      try {
+        const orderDate = parseISO(order.orderDate);
+        return isSameDay(orderDate, day);
+      } catch (error) {
+        return false;
+      }
+    });
+  };
+
+  // Get shipments for a specific day (by delivery date)
+  const getShipmentsForDay = (day) => {
+    return shipments.filter(shipment => {
+      if (!shipment || !shipment.deliveryDate) return false;
+      try {
+        const shipmentDate = parseISO(shipment.deliveryDate);
+        return isSameDay(shipmentDate, day);
+      } catch (error) {
+        return false;
+      }
+    });
+  };
 
   // Get date range based on view
   const getDateRange = () => {
@@ -79,6 +177,10 @@ const EventTimeline = () => {
       case 'In Progress': return '#ff9800';
       case 'Completed': return '#4caf50';
       case 'Cancelled': return '#f44336';
+      case 'scheduled': return '#2196f3';
+      case 'in_progress': return '#ff9800';
+      case 'completed': return '#4caf50';
+      case 'cancelled': return '#f44336';
       default: return '#9e9e9e';
     }
   };
@@ -92,15 +194,34 @@ const EventTimeline = () => {
 
   // Navigate months
   const goToPreviousMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+    setCurrentDate(subMonths(currentDate, 1));
   };
 
   const goToNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    setCurrentDate(addMonths(currentDate, 1));
   };
 
   const goToToday = () => {
     setCurrentDate(new Date());
+  };
+
+  // Handle day click
+  const handleDayClick = (day) => {
+    const dayEvents = getEventsForDay(day);
+    const dayBlocks = getScheduleBlocksForDay(day);
+    const dayOrders = getOrdersForDay(day);
+    const dayShipments = getShipmentsForDay(day);
+
+    if (dayEvents.length > 0 || dayBlocks.length > 0 || dayOrders.length > 0 || dayShipments.length > 0) {
+      setSelectedDay({
+        day,
+        events: dayEvents,
+        blocks: dayBlocks,
+        orders: dayOrders,
+        shipments: dayShipments
+      });
+      setDayDialogOpen(true);
+    }
   };
 
   // Get upcoming milestones for selected project
@@ -139,7 +260,694 @@ const EventTimeline = () => {
     }
   };
 
-  // Project Detail View Component
+  const getTypeColor = (type) => {
+    switch (type) {
+      case 'keynote': return '#ff6b9d';
+      case 'workshop': return '#00d4ff';
+      case 'session': return '#4caf50';
+      case 'break': return '#9e9e9e';
+      case 'meal': return '#ff9800';
+      case 'networking': return '#9c27b0';
+      default: return '#2196f3';
+    }
+  };
+
+  // Calendar Month View Component
+  const CalendarView = () => {
+    const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    return (
+      <Box>
+        {/* Calendar Grid */}
+        <Paper
+          sx={{
+            p: 3,
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: 2,
+          }}
+        >
+          {/* Week Day Headers */}
+          <Grid container spacing={0} sx={{ mb: 1 }}>
+            {weekDays.map((day) => (
+              <Grid item xs={12/7} key={day}>
+                <Box
+                  sx={{
+                    textAlign: 'center',
+                    py: 2,
+                    borderBottom: '2px solid rgba(255, 255, 255, 0.1)',
+                  }}
+                >
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    {day}
+                  </Typography>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* Calendar Days Grid */}
+          <Grid container spacing={0.5}>
+            {calendarDays.map((day, index) => {
+              const isToday = isSameDay(day, new Date());
+              const isCurrentMonth = isSameMonth(day, currentDate);
+              const dayEvents = getEventsForDay(day);
+              const dayBlocks = getScheduleBlocksForDay(day);
+              const dayOrders = getOrdersForDay(day);
+              const dayShipments = getShipmentsForDay(day);
+              const hasActivity = dayEvents.length > 0 || dayBlocks.length > 0 || dayOrders.length > 0 || dayShipments.length > 0;
+
+              return (
+                <Grid item xs={12/7} key={index}>
+                  <Paper
+                    onClick={() => hasActivity && handleDayClick(day)}
+                    sx={{
+                      minHeight: 120,
+                      p: 1,
+                      background: isToday
+                        ? 'rgba(0, 212, 255, 0.1)'
+                        : isCurrentMonth
+                        ? 'rgba(255, 255, 255, 0.03)'
+                        : 'rgba(255, 255, 255, 0.01)',
+                      backdropFilter: 'blur(10px)',
+                      border: isToday
+                        ? '2px solid #00d4ff'
+                        : '1px solid rgba(255, 255, 255, 0.05)',
+                      cursor: hasActivity ? 'pointer' : 'default',
+                      '&:hover': hasActivity ? {
+                        background: 'rgba(0, 212, 255, 0.15)',
+                        transform: 'scale(1.02)',
+                        transition: 'all 0.2s ease',
+                      } : {},
+                      opacity: isCurrentMonth ? 1 : 0.5,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 1 }}>
+                      <Typography
+                        variant="body2"
+                        fontWeight={isToday ? 700 : 500}
+                        color={isToday ? 'primary' : 'text.secondary'}
+                      >
+                        {format(day, 'd')}
+                      </Typography>
+                      {hasActivity && (
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            bgcolor: '#00d4ff',
+                          }}
+                        />
+                      )}
+                    </Box>
+
+                    {/* Events, Blocks, Orders, and Shipments for this day */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      {dayEvents.slice(0, 1).map((event, idx) => (
+                        <Chip
+                          key={idx}
+                          label={event.name}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: '0.65rem',
+                            bgcolor: getStatusColor(event.status),
+                            color: 'white',
+                            '& .MuiChip-label': {
+                              px: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            },
+                          }}
+                        />
+                      ))}
+
+                      {dayBlocks.slice(0, 1).map((block, idx) => (
+                        <Chip
+                          key={`block-${idx}`}
+                          label={block.title}
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: '0.6rem',
+                            bgcolor: getTypeColor(block.type),
+                            color: 'white',
+                            '& .MuiChip-label': {
+                              px: 0.5,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            },
+                          }}
+                        />
+                      ))}
+
+                      {dayOrders.slice(0, 1).map((order, idx) => (
+                        <Chip
+                          key={`order-${idx}`}
+                          label={`📦 ${order.customerName || 'Order'}`}
+                          size="small"
+                          sx={{
+                            height: 16,
+                            fontSize: '0.55rem',
+                            bgcolor: '#9c27b0',
+                            color: 'white',
+                            '& .MuiChip-label': {
+                              px: 0.5,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            },
+                          }}
+                        />
+                      ))}
+
+                      {dayShipments.slice(0, 1).map((shipment, idx) => (
+                        <Chip
+                          key={`shipment-${idx}`}
+                          label={`🚚 ${shipment.carrier || 'Delivery'}`}
+                          size="small"
+                          sx={{
+                            height: 16,
+                            fontSize: '0.55rem',
+                            bgcolor: '#ff5722',
+                            color: 'white',
+                            '& .MuiChip-label': {
+                              px: 0.5,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            },
+                          }}
+                        />
+                      ))}
+
+                      {(dayEvents.length + dayBlocks.length + dayOrders.length + dayShipments.length) > 4 && (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontSize: '0.6rem',
+                            color: 'primary.main',
+                            textAlign: 'center',
+                            mt: 0.5,
+                          }}
+                        >
+                          +{dayEvents.length + dayBlocks.length + dayOrders.length + dayShipments.length - 4} more
+                        </Typography>
+                      )}
+                    </Box>
+                  </Paper>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </Paper>
+
+        {/* Legend */}
+        <Paper
+          sx={{
+            p: 2,
+            mt: 3,
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="subtitle2" gutterBottom fontWeight={600}>
+            Calendar Legend
+          </Typography>
+          <Grid container spacing={1}>
+            <Grid item xs={6} sm={4} md={3}>
+              <Chip label="Event" size="small" sx={{ bgcolor: '#2196f3', color: 'white', width: '100%' }} />
+            </Grid>
+            <Grid item xs={6} sm={4} md={3}>
+              <Chip label="Keynote" size="small" sx={{ bgcolor: '#ff6b9d', color: 'white', width: '100%' }} />
+            </Grid>
+            <Grid item xs={6} sm={4} md={3}>
+              <Chip label="Workshop" size="small" sx={{ bgcolor: '#00d4ff', color: 'white', width: '100%' }} />
+            </Grid>
+            <Grid item xs={6} sm={4} md={3}>
+              <Chip label="Session" size="small" sx={{ bgcolor: '#4caf50', color: 'white', width: '100%' }} />
+            </Grid>
+            <Grid item xs={6} sm={4} md={3}>
+              <Chip label="Meal" size="small" sx={{ bgcolor: '#ff9800', color: 'white', width: '100%' }} />
+            </Grid>
+            <Grid item xs={6} sm={4} md={3}>
+              <Chip label="📦 Order" size="small" sx={{ bgcolor: '#9c27b0', color: 'white', width: '100%' }} />
+            </Grid>
+            <Grid item xs={6} sm={4} md={3}>
+              <Chip label="🚚 Shipment" size="small" sx={{ bgcolor: '#ff5722', color: 'white', width: '100%' }} />
+            </Grid>
+          </Grid>
+        </Paper>
+      </Box>
+    );
+  };
+
+  // Day Detail Dialog - Enhanced with comprehensive information
+  const DayDetailDialog = () => {
+    if (!selectedDay) return null;
+
+    const { day, events: dayEvents, blocks: dayBlocks, orders: dayOrders = [], shipments: dayShipments = [] } = selectedDay;
+    const totalActivities = dayEvents.length + dayBlocks.length + dayOrders.length + dayShipments.length;
+
+    return (
+      <Dialog
+        open={dayDialogOpen}
+        onClose={() => setDayDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box>
+              <Typography variant="h5" fontWeight={700}>
+                {format(day, 'EEEE, MMMM d, yyyy')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {totalActivities} {totalActivities === 1 ? 'activity' : 'activities'} scheduled
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setDayDialogOpen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {/* Summary Stats */}
+          {totalActivities > 0 && (
+            <Paper
+              sx={{
+                p: 2,
+                mb: 3,
+                background: 'rgba(0, 212, 255, 0.1)',
+                border: '1px solid rgba(0, 212, 255, 0.3)',
+                borderRadius: 2,
+              }}
+            >
+              <Grid container spacing={2}>
+                <Grid item xs={6} sm={3}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="primary">
+                      {dayEvents.length}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Events
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="primary">
+                      {dayBlocks.length}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Schedule Blocks
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="primary">
+                      {dayOrders.length}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Orders
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="primary">
+                      {dayShipments.length}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Shipments
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+
+          {/* Events */}
+          {dayEvents.length > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <EventIcon color="primary" />
+                Events ({dayEvents.length})
+              </Typography>
+              <Grid container spacing={2}>
+                {dayEvents.map((event, idx) => (
+                  <Grid item xs={12} key={idx}>
+                    <Card
+                      onClick={() => {
+                        setDayDialogOpen(false);
+                        navigate(`/event/${event.id}`);
+                      }}
+                      sx={{
+                        cursor: 'pointer',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          transform: 'translateY(-2px)',
+                          boxShadow: 4,
+                        },
+                      }}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="h6" fontWeight={600} gutterBottom>
+                              {event.name}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" gutterBottom>
+                              {event.description || 'No description available'}
+                            </Typography>
+                          </Box>
+                          <Chip
+                            label={event.status}
+                            size="small"
+                            sx={{ bgcolor: getStatusColor(event.status), color: 'white', fontWeight: 600 }}
+                          />
+                        </Box>
+                        <Divider sx={{ my: 1, opacity: 0.1 }} />
+                        <Grid container spacing={1}>
+                          <Grid item xs={12} sm={6}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <LocationIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">
+                                {event.location}
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <PeopleIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">
+                                {event.capacity || 'N/A'} capacity
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          {event.tickets && (
+                            <Grid item xs={12} sm={6}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <TicketIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                <Typography variant="body2" color="text.secondary">
+                                  {event.tickets.sold || 0}/{event.tickets.total || 0} tickets sold
+                                </Typography>
+                              </Box>
+                            </Grid>
+                          )}
+                          {event.category && (
+                            <Grid item xs={12} sm={6}>
+                              <Chip label={event.category} size="small" variant="outlined" />
+                            </Grid>
+                          )}
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
+
+          {/* Schedule Blocks */}
+          {dayBlocks.length > 0 && (
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ScheduleIcon color="primary" />
+                Daily Schedule ({dayBlocks.length} blocks)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+                Click any session to view or edit in the schedule builder
+              </Typography>
+              <Grid container spacing={2}>
+                {dayBlocks.sort((a, b) => {
+                  const timeA = a.startTime?.split(':').map(Number) || [0, 0];
+                  const timeB = b.startTime?.split(':').map(Number) || [0, 0];
+                  return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
+                }).map((block, idx) => {
+                  const event = events.find(e => e.id === block.eventId);
+                  return (
+                    <Grid item xs={12} sm={6} md={4} key={idx}>
+                      <Card
+                        onClick={() => {
+                          setDayDialogOpen(false);
+                          navigate(`/schedule/${block.eventId}`);
+                        }}
+                        sx={{
+                          cursor: 'pointer',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          backdropFilter: 'blur(10px)',
+                          borderLeft: `4px solid ${getTypeColor(block.type)}`,
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          transition: 'all 0.3s ease',
+                          height: '100%',
+                          '&:hover': {
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            transform: 'translateY(-2px)',
+                            boxShadow: 3,
+                          },
+                        }}
+                      >
+                        <CardContent>
+                          <Chip
+                            label={block.type}
+                            size="small"
+                            sx={{
+                              bgcolor: getTypeColor(block.type),
+                              color: 'white',
+                              mb: 1,
+                              fontWeight: 600,
+                            }}
+                          />
+                          <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                            {block.title}
+                          </Typography>
+                          {block.description && (
+                            <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                              {block.description.length > 80
+                                ? `${block.description.substring(0, 80)}...`
+                                : block.description}
+                            </Typography>
+                          )}
+                          <Divider sx={{ my: 1, opacity: 0.1 }} />
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <ScheduleIcon sx={{ fontSize: 14 }} />
+                              {block.startTime} - {block.endTime}
+                            </Typography>
+                            <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <LocationIcon sx={{ fontSize: 14 }} />
+                              {block.location}
+                            </Typography>
+                            {block.track && (
+                              <Typography variant="caption" color="text.secondary">
+                                🎯 Track: {block.track}
+                              </Typography>
+                            )}
+                            {block.capacity && (
+                              <Typography variant="caption" color="text.secondary">
+                                👥 Capacity: {block.capacity} | Registered: {block.registered || 0}
+                              </Typography>
+                            )}
+                            {block.speakers && block.speakers.length > 0 && (
+                              <Typography variant="caption" color="text.secondary">
+                                🎤 {block.speakers.map(s => s.name).join(', ')}
+                              </Typography>
+                            )}
+                          </Box>
+                          {event && (
+                            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                              <Typography variant="caption" color="primary">
+                                Part of: {event.name}
+                              </Typography>
+                            </Box>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Box>
+          )}
+
+          {/* Orders */}
+          {dayOrders.length > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TodoIcon color="primary" />
+                Orders ({dayOrders.length})
+              </Typography>
+              <Grid container spacing={2}>
+                {dayOrders.map((order, idx) => (
+                  <Grid item xs={12} sm={6} key={idx}>
+                    <Card
+                      onClick={() => navigate('/orders')}
+                      sx={{
+                        cursor: 'pointer',
+                        background: 'rgba(156, 39, 176, 0.1)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(156, 39, 176, 0.3)',
+                        borderLeft: '4px solid #9c27b0',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          background: 'rgba(156, 39, 176, 0.2)',
+                          transform: 'translateY(-2px)',
+                          boxShadow: 3,
+                        },
+                      }}
+                    >
+                      <CardContent>
+                        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                          📦 {order.customerName || 'Order'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          {order.items?.length || 0} items - ${order.totalAmount?.toFixed(2) || '0.00'}
+                        </Typography>
+                        <Divider sx={{ my: 1, opacity: 0.1 }} />
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Order ID: {order.id?.substring(0, 8)}
+                          </Typography>
+                          {order.deliveryAddress && (
+                            <Typography variant="caption" color="text.secondary">
+                              📍 {order.deliveryAddress}
+                            </Typography>
+                          )}
+                          <Chip
+                            label={order.paymentStatus || 'pending'}
+                            size="small"
+                            sx={{
+                              mt: 1,
+                              width: 'fit-content',
+                              bgcolor: order.paymentStatus === 'paid' ? '#4caf50' : '#ff9800',
+                              color: 'white',
+                            }}
+                          />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
+
+          {/* Shipments */}
+          {dayShipments.length > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ShippingIcon color="primary" />
+                Shipments ({dayShipments.length})
+              </Typography>
+              <Grid container spacing={2}>
+                {dayShipments.map((shipment, idx) => (
+                  <Grid item xs={12} sm={6} key={idx}>
+                    <Card
+                      onClick={() => navigate('/shipments')}
+                      sx={{
+                        cursor: 'pointer',
+                        background: 'rgba(255, 87, 34, 0.1)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(255, 87, 34, 0.3)',
+                        borderLeft: '4px solid #ff5722',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                          background: 'rgba(255, 87, 34, 0.2)',
+                          transform: 'translateY(-2px)',
+                          boxShadow: 3,
+                        },
+                      }}
+                    >
+                      <CardContent>
+                        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                          🚚 {shipment.carrier || 'Shipment'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Tracking: {shipment.trackingNumber || 'N/A'}
+                        </Typography>
+                        <Divider sx={{ my: 1, opacity: 0.1 }} />
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                          {shipment.origin && (
+                            <Typography variant="caption" color="text.secondary">
+                              From: {shipment.origin}
+                            </Typography>
+                          )}
+                          {shipment.destination && (
+                            <Typography variant="caption" color="text.secondary">
+                              To: {shipment.destination}
+                            </Typography>
+                          )}
+                          {shipment.deliveryDate && (
+                            <Typography variant="caption" color="text.secondary">
+                              📅 Expected: {format(parseISO(shipment.deliveryDate), 'PPP')}
+                            </Typography>
+                          )}
+                          <Chip
+                            label={shipment.status || 'in_transit'}
+                            size="small"
+                            sx={{
+                              mt: 1,
+                              width: 'fit-content',
+                              bgcolor: shipment.status === 'delivered' ? '#4caf50' : '#2196f3',
+                              color: 'white',
+                            }}
+                          />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
+
+          {dayEvents.length === 0 && dayBlocks.length === 0 && dayOrders.length === 0 && dayShipments.length === 0 && (
+            <Box sx={{ textAlign: 'center', py: 6 }}>
+              <CalendarIcon sx={{ fontSize: 64, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                No Activities Scheduled
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                This day has no events, schedule blocks, orders, or shipments
+              </Typography>
+            </Box>
+          )}
+
+          <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => setDayDialogOpen(false)}
+            >
+              Close
+            </Button>
+            {dayEvents.length > 0 && (
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={() => {
+                  setDayDialogOpen(false);
+                  navigate(`/event/${dayEvents[0].id}`);
+                }}
+              >
+                View Event Details
+              </Button>
+            )}
+          </Box>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  // Project Detail View Component (existing code continues...)
   const ProjectDetailView = ({ event }) => {
     const progress = calculateProgress(event);
     const upcomingMilestones = getUpcomingMilestones(event);
@@ -212,66 +1020,15 @@ const EventTimeline = () => {
               {completedMilestones.length} of {event.timeline?.length || 0} milestones completed
             </Typography>
           </Box>
-        </Paper>
 
-        {/* Todos Section */}
-        {event.todos && event.todos.length > 0 && (
-          <Paper sx={{
-            p: 3,
-            mb: 3,
-            background: 'rgba(33, 150, 243, 0.1)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(33, 150, 243, 0.2)',
-            boxShadow: '0 8px 32px 0 rgba(33, 150, 243, 0.2)',
-            borderRadius: 2,
-          }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <TodoIcon sx={{ mr: 1, fontSize: 28 }} />
-              <Typography variant="h5">
-                Event Todo List
-              </Typography>
-            </Box>
-            <Grid container spacing={2}>
-              {event.todos.map((todo, index) => (
-                <Grid item xs={12} sm={6} key={index}>
-                  <Paper sx={{
-                    p: 2,
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    backdropFilter: 'blur(10px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    borderRadius: 2,
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', mb: 1 }}>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="body2" fontWeight="bold" sx={{ textDecoration: todo.status === 'completed' ? 'line-through' : 'none' }}>
-                          {todo.status === 'completed' && '✅ '}
-                          {todo.status === 'in_progress' && '🔄 '}
-                          {todo.status === 'pending' && '⏳ '}
-                          {todo.task}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          Due: {format(new Date(todo.dueDate), 'MMM dd, yyyy h:mm a')}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Assigned: {todo.assignedTo}
-                        </Typography>
-                      </Box>
-                      <Chip
-                        label={todo.priority}
-                        size="small"
-                        color={todo.priority === 'urgent' ? 'error' : todo.priority === 'high' ? 'warning' : 'default'}
-                        sx={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          backdropFilter: 'blur(8px)',
-                        }}
-                      />
-                    </Box>
-                  </Paper>
-                </Grid>
-              ))}
-            </Grid>
-          </Paper>
-        )}
+          <Button
+            variant="contained"
+            onClick={() => navigate(`/event/${event.id}`)}
+            sx={{ mt: 2 }}
+          >
+            View Event Details
+          </Button>
+        </Paper>
 
         <Grid container spacing={3}>
           {/* Left Column - Project Info */}
@@ -330,150 +1087,6 @@ const EventTimeline = () => {
                 </Box>
               )}
             </Paper>
-
-            {/* Upcoming Milestones */}
-            <Paper sx={{
-              p: 2,
-              background: 'rgba(255, 152, 0, 0.1)',
-              backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255, 152, 0, 0.2)',
-              boxShadow: '0 8px 32px 0 rgba(255, 152, 0, 0.2)',
-              borderRadius: 2,
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <TrendingUpIcon sx={{ mr: 1 }} />
-                <Typography variant="h6">
-                  Upcoming Milestones
-                </Typography>
-              </Box>
-              {upcomingMilestones.length > 0 ? (
-                <Box>
-                  {upcomingMilestones.map((milestone, index) => (
-                    <Box
-                      key={index}
-                      sx={{
-                        mb: 1.5,
-                        pb: 1.5,
-                        borderBottom: index < upcomingMilestones.length - 1 ? 1 : 0,
-                        borderColor: 'divider'
-                      }}
-                    >
-                      <Typography variant="body2" fontWeight="bold">
-                        {milestone.step}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Due: {format(new Date(milestone.timestamp), 'MMM dd, yyyy')}
-                      </Typography>
-                      {milestone.completedBy && (
-                        <Typography variant="caption" display="block" color="warning.light">
-                          Assigned to: {milestone.completedBy}
-                        </Typography>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  No upcoming milestones
-                </Typography>
-              )}
-            </Paper>
-
-            {/* Merchandise Orders */}
-            {eventMerchandise.length > 0 && (
-              <Paper sx={{
-                p: 2,
-                mt: 2,
-                background: 'rgba(76, 175, 80, 0.1)',
-                backdropFilter: 'blur(12px)',
-                border: '1px solid rgba(76, 175, 80, 0.2)',
-                boxShadow: '0 8px 32px 0 rgba(76, 175, 80, 0.2)',
-                borderRadius: 2,
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <ShippingIcon sx={{ mr: 1 }} />
-                  <Typography variant="h6">
-                    Merchandise & Supplies
-                  </Typography>
-                </Box>
-                {eventMerchandise.map((order, index) => (
-                  <Box
-                    key={index}
-                    sx={{
-                      mb: 1.5,
-                      pb: 1.5,
-                      borderBottom: index < eventMerchandise.length - 1 ? 1 : 0,
-                      borderColor: 'divider'
-                    }}
-                  >
-                    <Typography variant="body2" fontWeight="bold">
-                      {order.orderNumber} - {order.itemType}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      Supplier: {order.supplier}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      Total: ${order.totalAmount.toFixed(2)}
-                    </Typography>
-                    <Chip
-                      label={order.status}
-                      size="small"
-                      color={order.status === 'Delivered' ? 'success' : order.status === 'Shipped' ? 'primary' : 'warning'}
-                      sx={{ mt: 0.5 }}
-                    />
-                  </Box>
-                ))}
-              </Paper>
-            )}
-
-            {/* Tickets Issued */}
-            {eventTickets.length > 0 && (
-              <Paper sx={{
-                p: 2,
-                mt: 2,
-                background: 'rgba(255, 152, 0, 0.1)',
-                backdropFilter: 'blur(12px)',
-                border: '1px solid rgba(255, 152, 0, 0.2)',
-                boxShadow: '0 8px 32px 0 rgba(255, 152, 0, 0.2)',
-                borderRadius: 2,
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <TicketIcon sx={{ mr: 1 }} />
-                  <Typography variant="h6">
-                    Tickets Issued
-                  </Typography>
-                </Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {eventTickets.length} ticket{eventTickets.length !== 1 ? 's' : ''} sold
-                </Typography>
-                {eventTickets.slice(0, 5).map((ticket, index) => (
-                  <Box
-                    key={index}
-                    sx={{
-                      mb: 1.5,
-                      pb: 1.5,
-                      borderBottom: index < Math.min(4, eventTickets.length - 1) ? 1 : 0,
-                      borderColor: 'divider'
-                    }}
-                  >
-                    <Typography variant="body2" fontWeight="bold">
-                      {ticket.ticketNumber} - {ticket.ticketType}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      {ticket.holderName}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      ${ticket.price.toFixed(2)}
-                    </Typography>
-                  </Box>
-                ))}
-                {eventTickets.length > 5 && (
-                  <Typography variant="caption" color="text.secondary">
-                    +{eventTickets.length - 5} more tickets
-                  </Typography>
-                )}
-              </Paper>
-            )}
           </Grid>
 
           {/* Right Column - Timeline */}
@@ -558,10 +1171,10 @@ const EventTimeline = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 3 }}>
           <Box>
             <Typography variant="h4" component="h1" gutterBottom>
-              📅 Event Timeline & Projects
+              📅 Event Timeline & Calendar
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
-              {view === 'gantt' ? 'Gantt chart view of all events' : 'Detailed project timeline and milestones'}
+              {view === 'calendar' ? 'Monthly calendar view with all events and activities' : 'Detailed project timeline and milestones'}
             </Typography>
           </Box>
 
@@ -578,16 +1191,63 @@ const EventTimeline = () => {
             }}
             size="small"
           >
-            <ToggleButton value="gantt">
-              <CalendarIcon sx={{ mr: 1 }} />
-              Gantt Chart
+            <ToggleButton value="calendar">
+              <MonthViewIcon sx={{ mr: 1 }} />
+              Calendar
             </ToggleButton>
             <ToggleButton value="project">
               <TimelineIcon sx={{ mr: 1 }} />
-              Project View
+              Project
             </ToggleButton>
           </ToggleButtonGroup>
         </Box>
+
+        {/* Month Navigation - Show for calendar view */}
+        {view === 'calendar' && (
+          <Paper sx={{
+            p: 2,
+            mb: 3,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: 2,
+          }}>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                onClick={goToPreviousMonth}
+                variant="outlined"
+                size="small"
+                startIcon={<ChevronLeft />}
+              >
+                Previous Month
+              </Button>
+              <Button onClick={goToToday} variant="contained" size="small">
+                This Month
+              </Button>
+              <Button
+                onClick={goToNextMonth}
+                variant="outlined"
+                size="small"
+                endIcon={<ChevronRight />}
+              >
+                Next Month
+              </Button>
+            </Box>
+
+            <Typography variant="h5" fontWeight={700}>
+              {format(currentDate, 'MMMM yyyy')}
+            </Typography>
+
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                {eventsInRange.length} events this month
+              </Typography>
+            </Box>
+          </Paper>
+        )}
 
         {/* Project Selector - Only show in project view */}
         {view === 'project' && events.length > 0 && (
@@ -597,7 +1257,6 @@ const EventTimeline = () => {
             background: 'rgba(255, 255, 255, 0.05)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255, 255, 255, 0.1)',
-            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
             borderRadius: 2,
           }}>
             <FormControl fullWidth>
@@ -631,8 +1290,8 @@ const EventTimeline = () => {
       </Box>
 
       {/* Conditional View Rendering */}
-      {view === 'project' ? (
-        // Project Detail View
+      {view === 'calendar' && <CalendarView />}
+      {view === 'project' && (
         <>
           {events.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -654,343 +1313,12 @@ const EventTimeline = () => {
             </Box>
           )}
         </>
-      ) : (
-        // Gantt Chart View (Original)
-        <>
-          {/* Date Navigation */}
-          <Paper sx={{
-            p: 2,
-            mb: 3,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: 'rgba(255, 255, 255, 0.05)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-            borderRadius: 2,
-          }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Chip
-                icon={<CalendarIcon />}
-                label="Previous"
-                onClick={goToPreviousMonth}
-                clickable
-              />
-              <Chip
-                icon={<CalendarIcon />}
-                label="Today"
-                onClick={goToToday}
-                clickable
-                color="primary"
-              />
-              <Chip
-                icon={<CalendarIcon />}
-                label="Next"
-                onClick={goToNextMonth}
-                clickable
-              />
-            </Box>
-
-            <Typography variant="h6">
-              {format(currentDate, 'MMMM yyyy')}
-            </Typography>
-
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                {eventsInRange.length} events
-              </Typography>
-            </Box>
-          </Paper>
-
-          {/* Timeline Grid */}
-      <Card sx={{
-        background: 'rgba(255, 255, 255, 0.05)',
-        backdropFilter: 'blur(10px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-        borderRadius: 2,
-      }}>
-        <CardContent>
-          {/* Date Header */}
-          <Box sx={{ display: 'flex', mb: 2, pb: 1, borderBottom: '2px solid', borderColor: 'divider' }}>
-            <Box sx={{ width: 200, flexShrink: 0, pr: 2 }}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Event
-              </Typography>
-            </Box>
-            <Box sx={{ flex: 1, display: 'flex', justifyContent: 'space-between', px: 2 }}>
-              {[...Array(Math.ceil(days.length / 7))].map((_, weekIndex) => (
-                <Typography key={weekIndex} variant="caption" color="text.secondary">
-                  Week {weekIndex + 1}
-                </Typography>
-              ))}
-            </Box>
-          </Box>
-
-          {/* Calendar Row */}
-          <Box sx={{ display: 'flex', mb: 3, pb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-            <Box sx={{ width: 200, flexShrink: 0, pr: 2 }}>
-              <Typography variant="caption" color="text.secondary">
-                Days →
-              </Typography>
-            </Box>
-            <Box sx={{ flex: 1, display: 'flex', position: 'relative' }}>
-              {days.map((day, index) => {
-                const isToday = isSameDay(day, new Date());
-                return (
-                  <Box
-                    key={index}
-                    sx={{
-                      flex: 1,
-                      textAlign: 'center',
-                      borderRight: index < days.length - 1 ? '1px solid' : 'none',
-                      borderColor: 'divider',
-                      py: 0.5,
-                      bgcolor: isToday ? 'primary.dark' : 'transparent',
-                      opacity: isToday ? 0.3 : 1,
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ opacity: 0.5 }}>
-                      {format(day, 'd')}
-                    </Typography>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Box>
-
-          {/* Events */}
-          {eventsInRange.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 8 }}>
-              <EventIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2, opacity: 0.3 }} />
-              <Typography variant="h6" color="text.secondary">
-                No events in this time range
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Navigate to a different month or create new events
-              </Typography>
-            </Box>
-          ) : (
-            eventsInRange.map((event, index) => {
-              const position = getEventPosition(event.date);
-              const statusColor = getStatusColor(event.status);
-
-              return (
-                <Box
-                  key={event.id}
-                  sx={{
-                    display: 'flex',
-                    mb: 2,
-                    alignItems: 'center',
-                    '&:hover': {
-                      bgcolor: 'action.hover',
-                      borderRadius: 1,
-                    },
-                    p: 1,
-                  }}
-                >
-                  {/* Event Info */}
-                  <Box sx={{ width: 200, flexShrink: 0, pr: 2 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 'medium', mb: 0.5 }}>
-                      {event.name}
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                      <Chip
-                        label={event.status}
-                        size="small"
-                        sx={{
-                          bgcolor: statusColor,
-                          color: 'white',
-                          fontSize: '0.7rem',
-                          height: 20,
-                        }}
-                      />
-                      <Chip
-                        label={event.category}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontSize: '0.7rem', height: 20 }}
-                      />
-                    </Box>
-                  </Box>
-
-                  {/* Timeline Bar */}
-                  <Box sx={{ flex: 1, position: 'relative', height: 40, px: 2 }}>
-                    {/* Background grid */}
-                    {days.map((day, dayIndex) => (
-                      <Box
-                        key={dayIndex}
-                        sx={{
-                          position: 'absolute',
-                          left: `${(dayIndex / days.length) * 100}%`,
-                          width: `${(1 / days.length) * 100}%`,
-                          height: '100%',
-                          borderRight: dayIndex < days.length - 1 ? '1px solid' : 'none',
-                          borderColor: 'divider',
-                          opacity: 0.1,
-                        }}
-                      />
-                    ))}
-
-                    {/* Event Bar */}
-                    <Tooltip
-                      title={
-                        <Box>
-                          <Typography variant="subtitle2">{event.name}</Typography>
-                          <Typography variant="caption">
-                            {format(parseISO(event.date), 'PPP')}
-                          </Typography>
-                          <Typography variant="caption" display="block">
-                            {event.location}
-                          </Typography>
-                          <Typography variant="caption" display="block">
-                            Status: {event.status}
-                          </Typography>
-                        </Box>
-                      }
-                      arrow
-                    >
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          left: `${position}%`,
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          bgcolor: statusColor,
-                          border: '2px solid white',
-                          boxShadow: 2,
-                          zIndex: 10,
-                          cursor: 'pointer',
-                          '&:hover': {
-                            width: 12,
-                            height: 12,
-                            boxShadow: 4,
-                          },
-                          transition: 'all 0.2s',
-                        }}
-                      />
-                    </Tooltip>
-
-                    {/* Event line/bar */}
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        left: `${position}%`,
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        width: `${Math.max(3, 100 - position)}%`,
-                        height: 2,
-                        bgcolor: statusColor,
-                        opacity: 0.3,
-                      }}
-                    />
-                  </Box>
-                </Box>
-              );
-            })
-          )}
-        </CardContent>
-      </Card>
-
-          {/* Legend */}
-          <Paper sx={{
-            p: 2,
-            mt: 3,
-            background: 'rgba(255, 255, 255, 0.05)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-            borderRadius: 2,
-          }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Status Legend
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              {['Planning', 'Confirmed', 'In Progress', 'Completed', 'Cancelled'].map(status => (
-                <Chip
-                  key={status}
-                  label={status}
-                  size="small"
-                  sx={{
-                    bgcolor: getStatusColor(status),
-                    color: 'white',
-                  }}
-                />
-              ))}
-            </Box>
-          </Paper>
-
-          {/* Stats */}
-          <Box sx={{ mt: 3, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
-            <Paper sx={{
-              p: 2,
-              background: 'rgba(33, 150, 243, 0.1)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(33, 150, 243, 0.2)',
-              boxShadow: '0 8px 32px 0 rgba(33, 150, 243, 0.2)',
-              borderRadius: 2,
-            }}>
-              <Typography variant="h4" color="primary.main">
-                {(events || []).length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Events
-              </Typography>
-            </Paper>
-            <Paper sx={{
-              p: 2,
-              background: 'rgba(76, 175, 80, 0.1)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(76, 175, 80, 0.2)',
-              boxShadow: '0 8px 32px 0 rgba(76, 175, 80, 0.2)',
-              borderRadius: 2,
-            }}>
-              <Typography variant="h4" color="success.main">
-                {(events || []).filter(e => e?.status === 'Completed').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Completed
-              </Typography>
-            </Paper>
-            <Paper sx={{
-              p: 2,
-              background: 'rgba(255, 152, 0, 0.1)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 152, 0, 0.2)',
-              boxShadow: '0 8px 32px 0 rgba(255, 152, 0, 0.2)',
-              borderRadius: 2,
-            }}>
-              <Typography variant="h4" color="warning.main">
-                {(events || []).filter(e => e?.status === 'In Progress').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                In Progress
-              </Typography>
-            </Paper>
-            <Paper sx={{
-              p: 2,
-              background: 'rgba(33, 150, 243, 0.1)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(33, 150, 243, 0.2)',
-              boxShadow: '0 8px 32px 0 rgba(33, 150, 243, 0.2)',
-              borderRadius: 2,
-            }}>
-              <Typography variant="h4" color="info.main">
-                {(events || []).filter(e => e?.status && ['Planning', 'Confirmed'].includes(e.status)).length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Upcoming
-              </Typography>
-            </Paper>
-          </Box>
-        </>
       )}
 
-      {/* AI Assistant FAB - Only show in project view with selected project */}
+      {/* Day Detail Dialog */}
+      <DayDetailDialog />
+
+      {/* AI Assistant FAB */}
       {view === 'project' && selectedProject && (
         <Fab
           color="primary"
