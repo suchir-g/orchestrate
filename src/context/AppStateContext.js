@@ -13,6 +13,7 @@ import {
 import { listenToScheduleBlocks } from '../services/scheduleService';
 import { listenToVolunteers } from '../services/volunteerService';
 import { listenToVolunteerTasks } from '../services/volunteerTaskService';
+import { initializeActivityTracking, clearActivities } from '../services/activityService';
 import { useAuth } from './AuthContext';
 
 const AppStateContext = createContext();
@@ -309,6 +310,7 @@ export const AppStateProvider = ({ children }) => {
       dispatch({ type: ActionTypes.SET_EVENTS, payload: [] });
       dispatch({ type: ActionTypes.SET_ORDERS, payload: [] });
       dispatch({ type: ActionTypes.SET_TICKETS, payload: [] });
+      // Note: We don't clear activities on logout to preserve history
       return;
     }
 
@@ -331,6 +333,9 @@ export const AppStateProvider = ({ children }) => {
       console.log('🎫 User tickets updated from Firebase:', tickets.length);
       dispatch({ type: ActionTypes.SET_TICKETS, payload: tickets });
     });
+
+    // Initialize activity tracking
+    const unsubscribeActivities = initializeActivityTracking(user.uid, ['events', 'orders', 'tickets']);
 
     // TODO: Add event selection state and enable hackathon listeners
     // Once we have a selectedEventId state, uncomment these listeners:
@@ -356,6 +361,7 @@ export const AppStateProvider = ({ children }) => {
       unsubscribeEvents();
       unsubscribeOrders();
       unsubscribeTickets();
+      unsubscribeActivities();
       // Add cleanup for hackathon listeners when enabled:
       // unsubscribeScheduleBlocks();
       // unsubscribeVolunteers();

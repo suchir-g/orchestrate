@@ -149,3 +149,28 @@ export const copyToClipboard = async (text) => {
     return false;
   }
 };
+
+// Get icon name for activity type
+export const getActivityIcon = (type) => {
+  const icons = {
+    order: 'OrderIcon',
+    ticket: 'TokenIcon',
+    event: 'EventIcon',
+    shipment: 'ShippingIcon',
+  };
+  return icons[type] || 'NotificationIcon';
+};
+
+// Get color for activity type
+export const getActivityColor = (type) => {
+  const colors = {
+    order: 'primary',
+    ticket: 'secondary',
+    event: 'info',
+    shipment: 'success',
+  };
+  return colors[type] || 'default';
+};
+
+// Alias for getTimeDifference with more semantic name
+export const getRelativeTime = getTimeDifference;

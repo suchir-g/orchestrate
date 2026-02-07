@@ -97,4 +97,18 @@ export const uploadApi = {
   deleteFile: (fileId) => apiClient.delete(`/upload/${fileId}`),
 };
 
+// Dashboard Analytics - Structured error handling
+export const getDashboardAnalytics = async (timeRange = '30d') => {
+  try {
+    const response = await apiClient.get(`/analytics/dashboard?range=${timeRange}`);
+    return { data: response.data, error: null };
+  } catch (error) {
+    console.error('Error fetching dashboard analytics:', error);
+    return {
+      data: null,
+      error: error.response?.data?.message || error.message || 'Failed to fetch dashboard analytics'
+    };
+  }
+};
+
 export default apiClient;

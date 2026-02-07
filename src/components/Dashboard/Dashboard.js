@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
   Container,
   Typography,
@@ -17,126 +18,44 @@ import {
   Avatar,
   Chip,
   IconButton,
+  Skeleton,
+  Alert,
 } from '@mui/material';
 import {
   Event as EventIcon,
   ShoppingCart as OrderIcon,
-  LocalShipping as ShippingIcon,
   Token as TokenIcon,
   Analytics as AnalyticsIcon,
   TrendingUp as TrendIcon,
   Warning as WarningIcon,
   CheckCircle as CheckIcon,
-  Schedule as ClockIcon,
   Notifications as NotificationIcon,
   Launch as LaunchIcon,
 } from '@mui/icons-material';
-import { useAppState } from '../../context/AppStateContext';
 import { useBlockchain } from '../../context/BlockchainContext';
+import useDashboardData from '../../hooks/useDashboardData';
+import { getTimeDifference } from '../../utils/helpers';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { events, orders, tickets } = useAppState();
   const { isConnected, account } = useBlockchain();
 
-  // Mock recent activities
-  const recentActivities = [
-    {
-      type: 'order',
-      title: 'New order received',
-      description: 'Order #ORD-789123 from John Doe',
-      timestamp: '5 minutes ago',
-      icon: <OrderIcon />,
-      color: 'primary',
-    },
-    {
-      type: 'ticket',
-      title: 'Blockchain ticket minted',
-      description: 'Tech Conference 2024 ticket created',
-      timestamp: '15 minutes ago',
-      icon: <TokenIcon />,
-      color: 'secondary',
-    },
-    {
-      type: 'shipment',
-      title: 'Shipment delivered',
-      description: 'Package delivered to customer in NYC',
-      timestamp: '1 hour ago',
-      icon: <CheckIcon />,
-      color: 'success',
-    },
-    {
-      type: 'event',
-      title: 'Event status updated',
-      description: 'Summer Festival moved to confirmed',
-      timestamp: '2 hours ago',
-      icon: <EventIcon />,
-      color: 'info',
-    },
-  ];
+  // Get dynamic dashboard data from custom hook
+  const {
+    recentActivities,
+    quickStats,
+    alerts,
+    loading,
+    error,
+    refreshData,
+  } = useDashboardData();
 
-  const quickStats = [
-    {
-      title: 'Total Events',
-      value: events.length,
-      change: '+12%',
-      changeType: 'positive',
-      icon: <EventIcon />,
-      color: 'primary',
-      path: '/events',
-    },
-    {
-      title: 'Active Orders',
-      value: orders.filter(o => ['Pending', 'Confirmed', 'Processing'].includes(o.status)).length,
-      change: '+5%',
-      changeType: 'positive',
-      icon: <OrderIcon />,
-      color: 'success',
-      path: '/orders',
-    },
-    {
-      title: 'Blockchain Tickets',
-      value: tickets.length,
-      change: '+8%',
-      changeType: 'positive',
-      icon: <TokenIcon />,
-      color: 'secondary',
-      path: '/tickets',
-    },
-    {
-      title: 'In Transit',
-      value: orders.filter(o => o.status === 'Shipped').length,
-      change: '-2%',
-      changeType: 'negative',
-      icon: <ShippingIcon />,
-      color: 'warning',
-      path: '/shipments',
-    },
-  ];
-
-  const alerts = [
-    {
-      type: 'warning',
-      title: 'Delayed Shipments',
-      message: '3 shipments are experiencing delays due to weather conditions',
-      action: 'View Details',
-      path: '/shipments',
-    },
-    {
-      type: 'info',
-      title: 'Blockchain Network',
-      message: isConnected ? `Connected to ${account?.slice(0, 6)}...${account?.slice(-4)}` : 'Wallet not connected',
-      action: isConnected ? null : 'Connect Wallet',
-      path: null,
-    },
-    {
-      type: 'success',
-      title: 'AI Predictions',
-      message: 'Delivery time predictions are 87% accurate this week',
-      action: 'View Analytics',
-      path: '/predictions',
-    },
-  ];
+  // Show toast notification on metrics error
+  useEffect(() => {
+    if (error.metrics) {
+      toast.error('Failed to load dashboard metrics. Using local data.');
+    }
+  }, [error.metrics]);
 
   const StatCard = ({ stat }) => (
     <Card 
@@ -210,11 +129,34 @@ const Dashboard = () => {
 
       {/* Quick Stats */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {quickStats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
-            <StatCard stat={stat} />
+        {loading.metrics ? (
+          // Show skeleton loading for quick stats
+          [1, 2, 3, 4].map((index) => (
+            <Grid item xs={12} sm={6} md={3} key={index}>
+              <Card sx={{ height: '100%' }}>
+                <CardContent>
+                  <Skeleton variant="text" width="60%" />
+                  <Skeleton variant="text" width="40%" height={40} sx={{ my: 1 }} />
+                  <Skeleton variant="text" width="30%" />
+                </CardContent>
+              </Card>
+            </Grid>
+          ))
+        ) : error.metrics ? (
+          // Show error state
+          <Grid item xs={12}>
+            <Alert severity="warning">
+              Unable to load metrics. Please try refreshing the page.
+            </Alert>
           </Grid>
-        ))}
+        ) : (
+          // Show actual stats
+          quickStats.map((stat, index) => (
+            <Grid item xs={12} sm={6} md={3} key={index}>
+              <StatCard stat={stat} />
+            </Grid>
+          ))
+        )}
       </Grid>
 
       <Grid container spacing={3}>
@@ -234,33 +176,74 @@ const Dashboard = () => {
                   View All
                 </Button>
               </Box>
-              <List>
-                {recentActivities.map((activity, index) => (
-                  <React.Fragment key={index}>
-                    <ListItem>
-                      <ListItemIcon>
-                        <Avatar sx={{ bgcolor: `${activity.color}.main`, width: 40, height: 40 }}>
-                          {activity.icon}
-                        </Avatar>
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={activity.title}
-                        secondary={
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">
-                              {activity.description}
-                            </Typography>
-                            <Typography variant="caption" color="text.disabled">
-                              {activity.timestamp}
-                            </Typography>
-                          </Box>
-                        }
-                      />
-                    </ListItem>
-                    {index < recentActivities.length - 1 && <Divider variant="inset" component="li" />}
-                  </React.Fragment>
-                ))}
-              </List>
+              {loading.activities ? (
+                // Show skeleton loading for activities
+                <List>
+                  {[1, 2, 3, 4].map((index) => (
+                    <React.Fragment key={index}>
+                      <ListItem>
+                        <ListItemIcon>
+                          <Skeleton variant="circular" width={40} height={40} />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={<Skeleton variant="text" width="60%" />}
+                          secondary={
+                            <>
+                              <Skeleton variant="text" width="80%" />
+                              <Skeleton variant="text" width="30%" />
+                            </>
+                          }
+                        />
+                      </ListItem>
+                      {index < 3 && <Divider variant="inset" component="li" />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              ) : error.activities ? (
+                // Show error state
+                <Alert severity="warning" sx={{ m: 2 }}>
+                  {error.activities}
+                </Alert>
+              ) : recentActivities.length === 0 ? (
+                // Show empty state
+                <Box sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography color="text.secondary">
+                    No recent activities to display
+                  </Typography>
+                  <Typography variant="caption" color="text.disabled">
+                    Activities will appear here as you create events, orders, and tickets
+                  </Typography>
+                </Box>
+              ) : (
+                // Show actual activities
+                <List>
+                  {recentActivities.map((activity, index) => (
+                    <React.Fragment key={activity.id || index}>
+                      <ListItem>
+                        <ListItemIcon>
+                          <Avatar sx={{ bgcolor: `${activity.color}.main`, width: 40, height: 40 }}>
+                            {activity.icon}
+                          </Avatar>
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={activity.title}
+                          secondary={
+                            <Box>
+                              <Typography variant="body2" color="text.secondary">
+                                {activity.description}
+                              </Typography>
+                              <Typography variant="caption" color="text.disabled">
+                                {getTimeDifference(activity.timestamp)}
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                      {index < recentActivities.length - 1 && <Divider variant="inset" component="li" />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -277,48 +260,69 @@ const Dashboard = () => {
                   <NotificationIcon />
                 </IconButton>
               </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {alerts.map((alert, index) => (
-                  <Paper 
-                    key={index}
-                    variant="outlined" 
-                    sx={{ 
-                      p: 2,
-                      bgcolor: alert.type === 'warning' ? 'warning.light' : 
-                              alert.type === 'success' ? 'success.light' : 'info.light',
-                      color: alert.type === 'warning' ? 'warning.contrastText' : 
-                             alert.type === 'success' ? 'success.contrastText' : 'info.contrastText',
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                      {alert.type === 'warning' && <WarningIcon sx={{ mr: 1, mt: 0.1 }} />}
-                      {alert.type === 'success' && <CheckIcon sx={{ mr: 1, mt: 0.1 }} />}
-                      {alert.type === 'info' && <NotificationIcon sx={{ mr: 1, mt: 0.1 }} />}
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          {alert.title}
-                        </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          {alert.message}
-                        </Typography>
-                        {alert.action && (
-                          <Button 
-                            size="small" 
-                            variant="contained"
-                            onClick={() => alert.path && navigate(alert.path)}
-                            sx={{ 
-                              bgcolor: 'rgba(255,255,255,0.2)',
-                              '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' }
-                            }}
-                          >
-                            {alert.action}
-                          </Button>
-                        )}
+              {loading.alerts ? (
+                // Show skeleton loading for alerts
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {[1, 2, 3].map((index) => (
+                    <Paper key={index} variant="outlined" sx={{ p: 2 }}>
+                      <Skeleton variant="text" width="40%" />
+                      <Skeleton variant="text" width="90%" />
+                      <Skeleton variant="rectangular" width={100} height={30} sx={{ mt: 1 }} />
+                    </Paper>
+                  ))}
+                </Box>
+              ) : alerts.length === 0 ? (
+                // Show empty state
+                <Box sx={{ p: 2, textAlign: 'center' }}>
+                  <Typography color="text.secondary" variant="body2">
+                    No alerts at this time
+                  </Typography>
+                </Box>
+              ) : (
+                // Show actual alerts
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {alerts.map((alert, index) => (
+                    <Paper
+                      key={index}
+                      variant="outlined"
+                      sx={{
+                        p: 2,
+                        bgcolor: alert.type === 'warning' ? 'warning.light' :
+                                alert.type === 'success' ? 'success.light' : 'info.light',
+                        color: alert.type === 'warning' ? 'warning.contrastText' :
+                               alert.type === 'success' ? 'success.contrastText' : 'info.contrastText',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                        {alert.type === 'warning' && <WarningIcon sx={{ mr: 1, mt: 0.1 }} />}
+                        {alert.type === 'success' && <CheckIcon sx={{ mr: 1, mt: 0.1 }} />}
+                        {alert.type === 'info' && <NotificationIcon sx={{ mr: 1, mt: 0.1 }} />}
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            {alert.title}
+                          </Typography>
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            {alert.message}
+                          </Typography>
+                          {alert.action && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => alert.path && navigate(alert.path)}
+                              sx={{
+                                bgcolor: 'rgba(255,255,255,0.2)',
+                                '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' }
+                              }}
+                            >
+                              {alert.action}
+                            </Button>
+                          )}
+                        </Box>
                       </Box>
-                    </Box>
-                  </Paper>
-                ))}
-              </Box>
+                    </Paper>
+                  ))}
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
