@@ -2,7 +2,6 @@
 import {
   createEvent,
   createOrder,
-  createTicket,
   getAllDocuments,
   deleteDocument,
   COLLECTIONS
@@ -17,7 +16,6 @@ const clearAllCollections = async () => {
   const collectionsToClear = [
     COLLECTIONS.EVENTS,
     COLLECTIONS.ORDERS,
-    COLLECTIONS.TICKETS,
     COLLECTIONS.SHIPMENTS,
     COLLECTIONS.SCHEDULE_BLOCKS
   ];
@@ -602,80 +600,8 @@ const dummyMerchandise = [
   }
 ];
 
-// Dummy Tickets Issued (scoped to events)
-// These are tickets sold to attendees
-const dummyTicketsIssued = [
-  {
-    eventId: 'tech-conference-2026',
-    eventName: 'Tech Conference 2026',
-    ticketNumber: 'TKT-TC-001',
-    ticketType: 'Early Bird',
-    holderName: 'Sarah Johnson',
-    holderEmail: 'sarah.j@techcorp.com',
-    price: 299.00,
-    purchaseDate: '2026-01-22T14:30:00Z',
-    status: 'confirmed',
-    paymentMethod: 'Credit Card',
-    transactionId: 'TXN-89234',
-    checkInStatus: 'not_checked_in'
-  },
-  {
-    eventId: 'tech-conference-2026',
-    eventName: 'Tech Conference 2026',
-    ticketNumber: 'TKT-TC-002',
-    ticketType: 'VIP',
-    holderName: 'Michael Chen',
-    holderEmail: 'mchen@cloudscale.io',
-    price: 599.00,
-    purchaseDate: '2026-02-01T10:15:00Z',
-    status: 'confirmed',
-    paymentMethod: 'PayPal',
-    transactionId: 'TXN-89456',
-    checkInStatus: 'not_checked_in'
-  },
-  {
-    eventId: 'summer-music-festival',
-    eventName: 'Summer Music Festival',
-    ticketNumber: 'TKT-SMF-001',
-    ticketType: 'Three Day Pass',
-    holderName: 'Emma Rodriguez',
-    holderEmail: 'emma.r@email.com',
-    price: 299.00,
-    purchaseDate: '2026-03-01T16:20:00Z',
-    status: 'confirmed',
-    paymentMethod: 'Credit Card',
-    transactionId: 'TXN-90123',
-    checkInStatus: 'not_checked_in'
-  },
-  {
-    eventId: 'web-dev-workshop',
-    eventName: 'Web Development Workshop',
-    ticketNumber: 'TKT-WDW-001',
-    ticketType: 'Student',
-    holderName: 'Alex Martinez',
-    holderEmail: 'alex.m@university.edu',
-    price: 99.00,
-    purchaseDate: '2026-01-28T09:45:00Z',
-    status: 'confirmed',
-    paymentMethod: 'Student Discount',
-    transactionId: 'TXN-87654',
-    checkInStatus: 'checked_in'
-  },
-  {
-    eventId: 'startup-pitch',
-    eventName: 'Startup Pitch Competition',
-    ticketNumber: 'TKT-SPC-001',
-    ticketType: 'Founder',
-    holderName: 'David Park',
-    holderEmail: 'david@startuphub.com',
-    price: 50.00,
-    purchaseDate: '2026-02-28T11:00:00Z',
-    status: 'confirmed',
-    paymentMethod: 'Credit Card',
-    transactionId: 'TXN-91234',
-    checkInStatus: 'not_checked_in'
-  }
-];
+// NOTE: Tickets are now NFTs on the blockchain - removed old Firebase ticket system
+// Organizers create ticket tiers via the NFT smart contract, attendees mint tickets as NFTs
 
 // Dummy Shipments (scoped to events)
 // Shipments of merchandise/equipment to event venues
@@ -818,25 +744,7 @@ export const loadDummyData = async (userId) => {
       }
     }
 
-    // Load Tickets Issued (linked to events)
-    console.log('\n🎫 Creating tickets issued...');
-    for (const ticket of dummyTicketsIssued) {
-      // Update eventId with actual ID from Firebase
-      const actualEventId = eventIdMap[ticket.eventName];
-      if (actualEventId) {
-        ticket.eventId = actualEventId;
-      }
-
-      const { id, error } = await createTicket({
-        ...ticket,
-        createdBy: userId
-      });
-      if (error) {
-        console.error(`❌ Error creating ticket ${ticket.ticketNumber}:`, error);
-      } else {
-        console.log(`✅ Created ticket: ${ticket.ticketNumber} for ${ticket.holderName} (ID: ${id})`);
-      }
-    }
+    // NOTE: Tickets are now NFTs - organizers create ticket tiers via blockchain
 
     // Load Shipments (linked to events)
     console.log('\n📦 Creating shipments...');
@@ -867,7 +775,6 @@ export const loadDummyData = async (userId) => {
     console.log('\n📊 Summary:');
     console.log(`   - Events: ${dummyEvents.length}`);
     console.log(`   - Merchandise Orders: ${dummyMerchandise.length}`);
-    console.log(`   - Tickets Issued: ${dummyTicketsIssued.length}`);
     console.log(`   - Shipments: ${dummyShipments.length}`);
 
   } catch (error) {
@@ -876,4 +783,4 @@ export const loadDummyData = async (userId) => {
 };
 
 // Export individual data arrays for reference
-export { dummyEvents, dummyMerchandise, dummyTicketsIssued, dummyShipments };
+export { dummyEvents, dummyMerchandise, dummyShipments };
