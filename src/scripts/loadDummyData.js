@@ -8,7 +8,9 @@ import {
   COLLECTIONS
 } from '../services/firebaseDbService';
 import { db } from '../config/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../config/firebase';
 
 // Function to clear all existing data
 const clearAllCollections = async () => {
@@ -856,6 +858,7 @@ export const loadDummyData = async () => {
         {
           name: 'Volunteer User',
           email: 'volunteer@example.com',
+          password: 'volunteer123',
           roles: [
             { eventId: eventIdMap['Tech Conference 2026'], role: 'volunteer' },
             { eventId: eventIdMap['Summer Music Festival'], role: 'volunteer' }
@@ -864,6 +867,7 @@ export const loadDummyData = async () => {
         {
           name: 'Admin User',
           email: 'admin@example.com',
+          password: 'admin123',
           roles: [
             { eventId: eventIdMap['Tech Conference 2026'], role: 'admin' }
           ]
@@ -871,6 +875,7 @@ export const loadDummyData = async () => {
         {
           name: 'Sponsor User',
           email: 'sponsor@example.com',
+          password: 'sponsor123',
           roles: [
             { eventId: eventIdMap['Summer Music Festival'], role: 'sponsor' }
           ]
@@ -878,16 +883,29 @@ export const loadDummyData = async () => {
       ];
 
       for (const u of testUsers) {
-        const { id, error } = await addDoc(collection(db, COLLECTIONS.USERS), {
-          ...u,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        }).then(docRef => ({ id: docRef.id, error: null })).catch(err => ({ id: null, error: err.message }));
+        try {
+          // Create auth account
+          const authUser = await createUserWithEmailAndPassword(auth, u.email, u.password);
+          const uid = authUser.user.uid;
 
-        if (error) {
-          console.error(`❌ Error creating user ${u.email}:`, error);
-        } else {
-          console.log(`✅ Created user: ${u.email} (ID: ${id})`);
+          // Create Firestore user document with UID as document ID
+          await setDoc(doc(db, COLLECTIONS.USERS, uid), {
+            name: u.name,
+            email: u.email,
+            displayName: u.name,
+            roles: u.roles,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+
+          console.log(`✅ Created user: ${u.email} (Auth UID: ${uid})`);
+        } catch (error) {
+          // User might already exist, try to just update the Firestore doc
+          if (error.code === 'auth/email-already-in-use') {
+            console.log(`⚠️  User ${u.email} already exists in Auth, skipping...`);
+          } else {
+            console.error(`❌ Error creating user ${u.email}:`, error.message);
+          }
         }
       }
     } catch (err) {
