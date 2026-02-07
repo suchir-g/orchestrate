@@ -1,8 +1,19 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { listenToEvents, listenToOrders, listenToTickets } from '../services/firebaseDbService';
+import {
+  listenToUserEvents,
+  listenToUserOrders,
+  listenToUserTickets,
+  createEvent,
+  createOrder,
+  createTicket,
+  updateEvent as updateEventInDb,
+  updateOrder as updateOrderInDb,
+  updateTicket as updateTicketInDb
+} from '../services/firebaseDbService';
 import { listenToScheduleBlocks } from '../services/scheduleService';
 import { listenToVolunteers } from '../services/volunteerService';
 import { listenToVolunteerTasks } from '../services/volunteerTaskService';
+import { useAuth } from './AuthContext';
 
 const AppStateContext = createContext();
 
@@ -205,21 +216,70 @@ const appReducer = (state, action) => {
 
 export const AppStateProvider = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const { user } = useAuth();
 
   // Action creators
   const actions = {
     setEvents: (events) => dispatch({ type: ActionTypes.SET_EVENTS, payload: events }),
-    addEvent: (event) => dispatch({ type: ActionTypes.ADD_EVENT, payload: event }),
-    updateEvent: (event) => dispatch({ type: ActionTypes.UPDATE_EVENT, payload: event }),
+    addEvent: async (event) => {
+      // Write to Firestore - listeners will update local state
+      const { id, error } = await createEvent(event);
+      if (error) {
+        console.error('Error creating event:', error);
+        throw new Error(error);
+      }
+      return { id, error };
+    },
+    updateEvent: async (event) => {
+      const { id, ...updateData } = event;
+      const { error } = await updateEventInDb(id, updateData);
+      if (error) {
+        console.error('Error updating event:', error);
+        throw new Error(error);
+      }
+      return { error };
+    },
     setOrders: (orders) => dispatch({ type: ActionTypes.SET_ORDERS, payload: orders }),
-    addOrder: (order) => dispatch({ type: ActionTypes.ADD_ORDER, payload: order }),
-    updateOrder: (order) => dispatch({ type: ActionTypes.UPDATE_ORDER, payload: order }),
+    addOrder: async (order) => {
+      // Write to Firestore - listeners will update local state
+      const { id, error } = await createOrder(order);
+      if (error) {
+        console.error('Error creating order:', error);
+        throw new Error(error);
+      }
+      return { id, error };
+    },
+    updateOrder: async (order) => {
+      const { id, ...updateData } = order;
+      const { error } = await updateOrderInDb(id, updateData);
+      if (error) {
+        console.error('Error updating order:', error);
+        throw new Error(error);
+      }
+      return { error };
+    },
     setShipments: (shipments) => dispatch({ type: ActionTypes.SET_SHIPMENTS, payload: shipments }),
     addShipment: (shipment) => dispatch({ type: ActionTypes.ADD_SHIPMENT, payload: shipment }),
     updateShipment: (shipment) => dispatch({ type: ActionTypes.UPDATE_SHIPMENT, payload: shipment }),
     setTickets: (tickets) => dispatch({ type: ActionTypes.SET_TICKETS, payload: tickets }),
-    addTicket: (ticket) => dispatch({ type: ActionTypes.ADD_TICKET, payload: ticket }),
-    updateTicket: (ticket) => dispatch({ type: ActionTypes.UPDATE_TICKET, payload: ticket }),
+    addTicket: async (ticket) => {
+      // Write to Firestore - listeners will update local state
+      const { id, error } = await createTicket(ticket);
+      if (error) {
+        console.error('Error creating ticket:', error);
+        throw new Error(error);
+      }
+      return { id, error };
+    },
+    updateTicket: async (ticket) => {
+      const { id, ...updateData } = ticket;
+      const { error } = await updateTicketInDb(id, updateData);
+      if (error) {
+        console.error('Error updating ticket:', error);
+        throw new Error(error);
+      }
+      return { error };
+    },
     setAnalytics: (analytics) => dispatch({ type: ActionTypes.SET_ANALYTICS, payload: analytics }),
     setPredictions: (predictions) => dispatch({ type: ActionTypes.SET_PREDICTIONS, payload: predictions }),
     setLoading: (loading) => dispatch({ type: ActionTypes.SET_LOADING, payload: loading }),
@@ -242,23 +302,33 @@ export const AppStateProvider = ({ children }) => {
 
   // Listen to Firebase real-time updates
   useEffect(() => {
-    console.log('🔥 Setting up Firebase listeners...');
+    // Only set up listeners if user is authenticated
+    if (!user) {
+      console.log('⏸️  No user authenticated, skipping Firebase listeners');
+      // Clear state when user logs out
+      dispatch({ type: ActionTypes.SET_EVENTS, payload: [] });
+      dispatch({ type: ActionTypes.SET_ORDERS, payload: [] });
+      dispatch({ type: ActionTypes.SET_TICKETS, payload: [] });
+      return;
+    }
 
-    // Listen to events
-    const unsubscribeEvents = listenToEvents((events) => {
-      console.log('📅 Events updated from Firebase:', events.length);
+    console.log('🔥 Setting up user-scoped Firebase listeners for user:', user.uid);
+
+    // Listen to user's events
+    const unsubscribeEvents = listenToUserEvents(user.uid, (events) => {
+      console.log('📅 User events updated from Firebase:', events.length);
       dispatch({ type: ActionTypes.SET_EVENTS, payload: events });
     });
 
-    // Listen to orders
-    const unsubscribeOrders = listenToOrders((orders) => {
-      console.log('📦 Orders updated from Firebase:', orders.length);
+    // Listen to user's orders
+    const unsubscribeOrders = listenToUserOrders(user.uid, (orders) => {
+      console.log('📦 User orders updated from Firebase:', orders.length);
       dispatch({ type: ActionTypes.SET_ORDERS, payload: orders });
     });
 
-    // Listen to tickets
-    const unsubscribeTickets = listenToTickets((tickets) => {
-      console.log('🎫 Tickets updated from Firebase:', tickets.length);
+    // Listen to user's tickets
+    const unsubscribeTickets = listenToUserTickets(user.uid, (tickets) => {
+      console.log('🎫 User tickets updated from Firebase:', tickets.length);
       dispatch({ type: ActionTypes.SET_TICKETS, payload: tickets });
     });
 
@@ -282,7 +352,7 @@ export const AppStateProvider = ({ children }) => {
 
     // Cleanup listeners on unmount
     return () => {
-      console.log('🔥 Cleaning up Firebase listeners...');
+      console.log('🔥 Cleaning up user-scoped Firebase listeners...');
       unsubscribeEvents();
       unsubscribeOrders();
       unsubscribeTickets();
@@ -291,7 +361,7 @@ export const AppStateProvider = ({ children }) => {
       // unsubscribeVolunteers();
       // unsubscribeVolunteerTasks();
     };
-  }, []); // Add selectedEventId to dependency array when implementing event selection
+  }, [user]); // Re-run when user changes (login/logout)
 
   const value = {
     ...state,

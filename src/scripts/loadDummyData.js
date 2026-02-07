@@ -768,8 +768,13 @@ const dummyShipments = [
 ];
 
 // Function to load all dummy data
-export const loadDummyData = async () => {
-  console.log('🚀 Starting to load dummy data...');
+export const loadDummyData = async (userId) => {
+  if (!userId) {
+    console.error('❌ Error: userId is required to load dummy data');
+    throw new Error('userId is required to load dummy data');
+  }
+
+  console.log(`🚀 Starting to load dummy data for user: ${userId}...`);
 
   try {
     // Clear all existing data first
@@ -780,7 +785,10 @@ export const loadDummyData = async () => {
     const eventIdMap = {};
 
     for (const event of dummyEvents) {
-      const { id, error } = await createEvent(event);
+      const { id, error } = await createEvent({
+        ...event,
+        createdBy: userId
+      });
       if (error) {
         console.error(`❌ Error creating event "${event.name}":`, error);
       } else {
@@ -799,7 +807,10 @@ export const loadDummyData = async () => {
         merch.eventId = actualEventId;
       }
 
-      const { id, error } = await createOrder(merch);
+      const { id, error } = await createOrder({
+        ...merch,
+        createdBy: userId
+      });
       if (error) {
         console.error(`❌ Error creating merchandise order ${merch.orderNumber}:`, error);
       } else {
@@ -816,7 +827,10 @@ export const loadDummyData = async () => {
         ticket.eventId = actualEventId;
       }
 
-      const { id, error } = await createTicket(ticket);
+      const { id, error } = await createTicket({
+        ...ticket,
+        createdBy: userId
+      });
       if (error) {
         console.error(`❌ Error creating ticket ${ticket.ticketNumber}:`, error);
       } else {
@@ -836,6 +850,7 @@ export const loadDummyData = async () => {
       // Use addDoc directly since we don't have a createShipment function yet
       const { id, error } = await addDoc(collection(db, COLLECTIONS.SHIPMENTS), {
         ...shipment,
+        createdBy: userId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       }).then(docRef => ({ id: docRef.id, error: null }))

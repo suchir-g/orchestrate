@@ -20,13 +20,22 @@ import {
   Info as InfoIcon
 } from '@mui/icons-material';
 import { loadDummyData } from '../../scripts/loadDummyData';
+import { useAuth } from '../../context/AuthContext';
+import toast from 'react-hot-toast';
 
 const LoadData = () => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(null);
   const [logs, setLogs] = useState([]);
 
   const handleLoadData = async () => {
+    if (!user) {
+      toast.error('Please sign in to load dummy data');
+      setStatus({ type: 'error', message: 'You must be signed in to load dummy data' });
+      return;
+    }
+
     setLoading(true);
     setStatus(null);
     setLogs([]);
@@ -46,10 +55,12 @@ const LoadData = () => {
     };
 
     try {
-      await loadDummyData();
-      setStatus({ type: 'success', message: 'Dummy data loaded successfully!' });
+      await loadDummyData(user.uid);
+      setStatus({ type: 'success', message: 'Dummy data loaded successfully! All data is scoped to your account.' });
+      toast.success('Dummy data loaded successfully!');
     } catch (error) {
       setStatus({ type: 'error', message: `Error: ${error.message}` });
+      toast.error(`Failed to load dummy data: ${error.message}`);
     } finally {
       setLoading(false);
       // Restore original console methods
@@ -65,8 +76,13 @@ const LoadData = () => {
           🔧 Load Dummy Data
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          Populate your Firebase database with sample events, orders, and tickets
+          Populate your account with sample events, orders, and tickets (user-scoped)
         </Typography>
+        {user && (
+          <Typography variant="body2" color="primary" sx={{ mt: 1 }}>
+            Signed in as: {user.email}
+          </Typography>
+        )}
       </Box>
 
       <Card sx={{ mb: 3 }}>
@@ -110,10 +126,10 @@ const LoadData = () => {
               size="large"
               startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
               onClick={handleLoadData}
-              disabled={loading}
+              disabled={loading || !user}
               fullWidth
             >
-              {loading ? 'Loading Data...' : 'Load Dummy Data'}
+              {loading ? 'Loading Data...' : !user ? 'Sign In Required' : 'Load Dummy Data'}
             </Button>
           </Box>
         </CardContent>
@@ -167,10 +183,17 @@ const LoadData = () => {
         </Card>
       )}
 
-      <Alert severity="warning" sx={{ mt: 3 }}>
-        <strong>Note:</strong> Make sure you have Firebase Authentication enabled and are signed in.
-        The data will be added to your Firestore database.
-      </Alert>
+      {!user ? (
+        <Alert severity="warning" sx={{ mt: 3 }}>
+          <strong>Authentication Required:</strong> Please sign in to load dummy data.
+          All data will be scoped to your account and only visible to you.
+        </Alert>
+      ) : (
+        <Alert severity="info" sx={{ mt: 3 }}>
+          <strong>Note:</strong> Dummy data will be scoped to your account ({user.email}).
+          All events, orders, and tickets will only be visible to you.
+        </Alert>
+      )}
     </Container>
   );
 };

@@ -37,11 +37,13 @@ import {
   Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
+import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 const EventTracking = () => {
   const { events, addEvent, updateEvent, setLoading } = useAppState();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -59,47 +61,55 @@ const EventTracking = () => {
   const eventStatuses = ['Planning', 'Confirmed', 'In Progress', 'Completed', 'Cancelled'];
   const eventCategories = ['Conference', 'Workshop', 'Concert', 'Sports', 'Exhibition', 'Other'];
 
-  const handleCreateEvent = () => {
+  const handleCreateEvent = async () => {
+    if (!user) {
+      toast.error('Please sign in to create events');
+      return;
+    }
+
     if (!newEvent.name || !newEvent.date || !newEvent.location) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    const eventData = {
-      id: Date.now(),
-      ...newEvent,
-      status: 'Planning',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      timeline: [
-        {
-          step: 'Event Created',
-          timestamp: new Date().toISOString(),
-          status: 'completed',
-          description: 'Event has been created and is in planning phase',
+    try {
+      const eventData = {
+        ...newEvent,
+        createdBy: user.uid,
+        status: 'Planning',
+        timeline: [
+          {
+            step: 'Event Created',
+            timestamp: new Date().toISOString(),
+            status: 'completed',
+            description: 'Event has been created and is in planning phase',
+          },
+        ],
+        attendees: 0,
+        tickets: {
+          total: parseInt(newEvent.capacity) || 0,
+          sold: 0,
+          available: parseInt(newEvent.capacity) || 0,
         },
-      ],
-      attendees: 0,
-      tickets: {
-        total: parseInt(newEvent.capacity) || 0,
-        sold: 0,
-        available: parseInt(newEvent.capacity) || 0,
-      },
-    };
+      };
 
-    addEvent(eventData);
-    toast.success('Event created successfully!');
-    
-    setNewEvent({
-      name: '',
-      description: '',
-      date: '',
-      location: '',
-      capacity: '',
-      organizer: '',
-      category: '',
-    });
-    setOpenDialog(false);
+      await addEvent(eventData);
+      toast.success('Event created successfully!');
+
+      setNewEvent({
+        name: '',
+        description: '',
+        date: '',
+        location: '',
+        capacity: '',
+        organizer: '',
+        category: '',
+      });
+      setOpenDialog(false);
+    } catch (error) {
+      console.error('Error creating event:', error);
+      toast.error('Failed to create event');
+    }
   };
 
   const getStatusColor = (status) => {

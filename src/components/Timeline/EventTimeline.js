@@ -1318,27 +1318,45 @@ const EventTimeline = () => {
       {/* Day Detail Dialog */}
       <DayDetailDialog />
 
-      {/* AI Assistant FAB */}
-      {view === 'project' && selectedProject && (
-        <Fab
-          color="primary"
-          aria-label="AI Assistant"
-          sx={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            background: 'linear-gradient(135deg, #00d4ff 0%, #ff6b9d 100%)',
-            boxShadow: '0 4px 20px rgba(0, 212, 255, 0.4)',
-            '&:hover': {
-              background: 'linear-gradient(135deg, #00a3cc 0%, #cc4670 100%)',
-              boxShadow: '0 6px 25px rgba(0, 212, 255, 0.6)',
+      {/* AI Assistant FAB - Always visible, more prominent */}
+      <Fab
+        variant="extended"
+        color="primary"
+        aria-label="AI Assistant"
+        sx={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          background: 'linear-gradient(135deg, #00d4ff 0%, #ff6b9d 100%)',
+          boxShadow: '0 8px 32px rgba(0, 212, 255, 0.5)',
+          px: 3,
+          py: 1.5,
+          fontSize: '1rem',
+          fontWeight: 700,
+          animation: 'pulse 2s infinite',
+          '@keyframes pulse': {
+            '0%, 100%': {
+              boxShadow: '0 8px 32px rgba(0, 212, 255, 0.5)',
+              transform: 'scale(1)',
             },
-          }}
-          onClick={() => setChatOpen(true)}
-        >
-          <AiIcon />
-        </Fab>
-      )}
+            '50%': {
+              boxShadow: '0 12px 40px rgba(0, 212, 255, 0.7)',
+              transform: 'scale(1.02)',
+            },
+          },
+          '&:hover': {
+            background: 'linear-gradient(135deg, #00a3cc 0%, #cc4670 100%)',
+            boxShadow: '0 12px 40px rgba(0, 212, 255, 0.8)',
+            animation: 'none',
+            transform: 'scale(1.05)',
+          },
+          transition: 'all 0.3s ease',
+        }}
+        onClick={() => setChatOpen(true)}
+      >
+        <AiIcon sx={{ mr: 1 }} />
+        AI Assistant
+      </Fab>
 
       {/* AI Chat Assistant */}
       <EventChatAssistant
