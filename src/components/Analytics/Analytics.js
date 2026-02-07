@@ -52,7 +52,7 @@ import {
 import { useAppState } from '../../context/AppStateContext';
 
 const Analytics = () => {
-  const { events, orders, tickets } = useAppState();
+  const { events, orders } = useAppState();
   const [tabValue, setTabValue] = useState(0);
   const [predictions, setPredictions] = useState({
     onTimePercentage: 0,
@@ -230,7 +230,7 @@ const Analytics = () => {
           📊 Analytics Dashboard
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          Comprehensive insights into your events, orders, and blockchain tickets
+          Comprehensive insights into your events, orders, and NFT tickets
         </Typography>
       </Box>
 
@@ -256,9 +256,9 @@ const Analytics = () => {
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
-            title="Blockchain Tickets"
-            value={tickets.length}
-            subtitle="All verified"
+            title="NFT Tickets"
+            value="--"
+            subtitle="On blockchain"
             icon={<TokenIcon sx={{ fontSize: 40 }} />}
             color="secondary"
           />

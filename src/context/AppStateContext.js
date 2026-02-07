@@ -2,13 +2,10 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import {
   listenToUserEvents,
   listenToUserOrders,
-  listenToUserTickets,
   createEventWithCollaboration,
   createOrder,
-  createTicket,
   updateEvent as updateEventInDb,
-  updateOrder as updateOrderInDb,
-  updateTicket as updateTicketInDb
+  updateOrder as updateOrderInDb
 } from '../services/firebaseDbService';
 import { listenToScheduleBlocks } from '../services/scheduleService';
 import { listenToVolunteers } from '../services/volunteerService';
@@ -32,7 +29,6 @@ const initialState = {
   events: [],
   orders: [],
   shipments: [],
-  tickets: [],
   // Hackathon-specific state
   scheduleBlocks: [],
   volunteers: [],
@@ -42,7 +38,6 @@ const initialState = {
     totalEvents: 0,
     totalOrders: 0,
     totalShipments: 0,
-    totalTickets: 0,
   },
   predictions: {
     deliveryPredictions: [],
@@ -59,7 +54,6 @@ const initialState = {
     events: false,
     orders: false,
     shipments: false,
-    tickets: false,
     scheduleBlocks: false,
     volunteers: false,
     volunteerTasks: false,
@@ -77,9 +71,6 @@ const ActionTypes = {
   SET_SHIPMENTS: 'SET_SHIPMENTS',
   ADD_SHIPMENT: 'ADD_SHIPMENT',
   UPDATE_SHIPMENT: 'UPDATE_SHIPMENT',
-  SET_TICKETS: 'SET_TICKETS',
-  ADD_TICKET: 'ADD_TICKET',
-  UPDATE_TICKET: 'UPDATE_TICKET',
   SET_ANALYTICS: 'SET_ANALYTICS',
   SET_PREDICTIONS: 'SET_PREDICTIONS',
   SET_LOADING: 'SET_LOADING',
@@ -134,17 +125,6 @@ const appReducer = (state, action) => {
         ...state,
         shipments: state.shipments.map(shipment =>
           shipment.id === action.payload.id ? action.payload : shipment
-        )
-      };
-    case ActionTypes.SET_TICKETS:
-      return { ...state, tickets: action.payload };
-    case ActionTypes.ADD_TICKET:
-      return { ...state, tickets: [...state.tickets, action.payload] };
-    case ActionTypes.UPDATE_TICKET:
-      return {
-        ...state,
-        tickets: state.tickets.map(ticket =>
-          ticket.id === action.payload.id ? action.payload : ticket
         )
       };
     case ActionTypes.SET_ANALYTICS:
@@ -267,25 +247,7 @@ export const AppStateProvider = ({ children }) => {
     setShipments: (shipments) => dispatch({ type: ActionTypes.SET_SHIPMENTS, payload: shipments }),
     addShipment: (shipment) => dispatch({ type: ActionTypes.ADD_SHIPMENT, payload: shipment }),
     updateShipment: (shipment) => dispatch({ type: ActionTypes.UPDATE_SHIPMENT, payload: shipment }),
-    setTickets: (tickets) => dispatch({ type: ActionTypes.SET_TICKETS, payload: tickets }),
-    addTicket: async (ticket) => {
-      // Write to Firestore - listeners will update local state
-      const { id, error } = await createTicket(ticket);
-      if (error) {
-        console.error('Error creating ticket:', error);
-        throw new Error(error);
-      }
-      return { id, error };
-    },
-    updateTicket: async (ticket) => {
-      const { id, ...updateData } = ticket;
-      const { error } = await updateTicketInDb(id, updateData);
-      if (error) {
-        console.error('Error updating ticket:', error);
-        throw new Error(error);
-      }
-      return { error };
-    },
+    // Ticket functions removed - now using NFT blockchain ticketing system
     setAnalytics: (analytics) => dispatch({ type: ActionTypes.SET_ANALYTICS, payload: analytics }),
     setPredictions: (predictions) => dispatch({ type: ActionTypes.SET_PREDICTIONS, payload: predictions }),
     setLoading: (loading) => dispatch({ type: ActionTypes.SET_LOADING, payload: loading }),
@@ -353,14 +315,8 @@ export const AppStateProvider = ({ children }) => {
       dispatch({ type: ActionTypes.SET_ORDERS, payload: orders });
     });
 
-    // Listen to user's tickets
-    const unsubscribeTickets = listenToUserTickets(user.uid, (tickets) => {
-      console.log('🎫 User tickets updated from Firebase:', tickets.length);
-      dispatch({ type: ActionTypes.SET_TICKETS, payload: tickets });
-    });
-
-    // Initialize activity tracking
-    const unsubscribeActivities = initializeActivityTracking(user.uid, ['events', 'orders', 'tickets']);
+    // Initialize activity tracking (removed 'tickets' - now using NFT system)
+    const unsubscribeActivities = initializeActivityTracking(user.uid, ['events', 'orders']);
 
     // TODO: Add event selection state and enable hackathon listeners
     // Once we have a selectedEventId state, uncomment these listeners:
@@ -385,7 +341,6 @@ export const AppStateProvider = ({ children }) => {
       console.log('🔥 Cleaning up user-scoped Firebase listeners...');
       unsubscribeEvents();
       unsubscribeOrders();
-      unsubscribeTickets();
       unsubscribeActivities();
       clearInterval(refreshInterval);
       // Add cleanup for hackathon listeners when enabled:
