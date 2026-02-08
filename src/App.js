@@ -18,8 +18,7 @@ import './utils/quickFix';
 import Sidebar from './components/Common/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
 import EventTracking from './components/EventTracking/EventTracking';
-import OrderTracking from './components/Logistics/OrderTracking';
-import ShipmentTracking from './components/Logistics/ShipmentTracking';
+import LogisticsTracker from './components/Logistics/LogisticsTracker';
 import TicketManager from './components/Blockchain/TicketManager';
 import Analytics from './components/Analytics/Analytics';
 import LoadData from './components/Admin/LoadData';
@@ -130,8 +129,9 @@ function App() {
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/events" element={<EventTracking />} />
-                    <Route path="/orders" element={<OrderTracking />} />
-                    <Route path="/shipments" element={<ShipmentTracking />} />
+                    <Route path="/orders" element={<LogisticsTracker />} />
+                    <Route path="/shipments" element={<LogisticsTracker />} />
+                    <Route path="/logistics" element={<LogisticsTracker />} />
                     <Route path="/tickets" element={<TicketManager />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/timeline" element={<EventTimeline />} />

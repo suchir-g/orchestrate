@@ -177,7 +177,7 @@ const EventCollaboration = ({ open, onClose, event }) => {
     }
   };
 
-  const canApproveRequests = userEventRole === EVENT_ROLES.OWNER || userEventRole === EVENT_ROLES.ORGANIZER;
+  const canApproveRequests = userEventRole === EVENT_ROLES.ORGANIZER;
 
   const allMessages = messages;
   const pendingRequests = messages.filter(

@@ -94,8 +94,7 @@ const Sidebar = () => {
     { path: '/events', label: 'Events', icon: <EventIcon /> },
     { path: '/messages', label: 'Messages', icon: <MessageIcon />, badge: unreadCount },
     { path: '/timeline', label: 'Timeline', icon: <TimelineIcon /> },
-    { path: '/orders', label: 'Orders', icon: <ShippingIcon /> },
-    { path: '/shipments', label: 'Shipments', icon: <ShippingIcon /> },
+    { path: '/logistics', label: 'Logistics', icon: <ShippingIcon /> },
     { path: '/tickets', label: 'Blockchain Tickets', icon: <TokenIcon /> },
     { path: '/analytics', label: 'Analytics & Predictions', icon: <AnalyticsIcon /> },
   ];
