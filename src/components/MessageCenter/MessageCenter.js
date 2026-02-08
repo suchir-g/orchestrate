@@ -72,14 +72,16 @@ const MessageCenter = () => {
 
   // Listen to messages in selected thread
   useEffect(() => {
-    if (!selectedThread) return;
+    if (!selectedThread || !user) return;
 
     const unsubscribe = listenToThreadMessages(selectedThread.id, (messages) => {
       setThreadMessages(messages);
     });
 
-    // Mark as read
-    markThreadAsRead(selectedThread.id, user.uid);
+    // Mark as read (only if user present)
+    if (user && user.uid) {
+      markThreadAsRead(selectedThread.id, user.uid);
+    }
 
     return () => unsubscribe();
   }, [selectedThread, user]);
@@ -139,7 +141,7 @@ const MessageCenter = () => {
   };
 
   const canResolveThread = (thread) => {
-    if (!thread) return false;
+    if (!thread || !user) return false;
     return thread.createdBy === user.uid; // Creator can always resolve
   };
 
@@ -195,7 +197,7 @@ const MessageCenter = () => {
           ) : (
             <List>
               {displayThreads.map((thread) => {
-                const unread = thread.unreadCount?.[user.uid] || 0;
+                const unread = thread.unreadCount?.[user?.uid] || 0;
                 const eventName = getEventName(thread.eventId);
 
                 return (
@@ -332,7 +334,7 @@ const MessageCenter = () => {
                             {formatDistanceToNow(message.createdAt, { addSuffix: true })}
                           </Typography>
                         </Box>
-                        <Paper sx={{ p: 2, bgcolor: message.senderId === user.uid ? 'rgba(0, 212, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)' }}>
+                        <Paper sx={{ p: 2, bgcolor: message.senderId === user?.uid ? 'rgba(0, 212, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)' }}>
                           <Typography variant="body2">{message.content}</Typography>
                         </Paper>
                       </Box>

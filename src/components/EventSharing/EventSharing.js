@@ -53,9 +53,12 @@ import {
   getRoleColor,
 } from '../../utils/roleConstants';
 import { useAuth } from '../../context/AuthContext';
+import { getUserEventRole } from '../../services/accessControlService';
+import { USER_ROLES } from '../../utils/roleConstants';
 
 const EventSharing = ({ open, onClose, event, onUpdate }) => {
   const { user } = useAuth();
+  const { userRole } = useAuth();
   const [collaborators, setCollaborators] = useState([]);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState(EVENT_ROLES.VIEWER);
@@ -70,6 +73,17 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
       setVisibility(event.visibility || EVENT_VISIBILITY.PRIVATE);
     }
   }, [open, event]);
+
+  // Load user's event role to determine permissions (owner/organizer/admin)
+  const [userEventRole, setUserEventRole] = useState(null);
+  useEffect(() => {
+    const loadRole = async () => {
+      if (!event || !user) return;
+      const role = await getUserEventRole(event.id, user.uid, userRole);
+      setUserEventRole(role);
+    };
+    loadRole();
+  }, [event, user, userRole]);
 
   const loadCollaborators = async () => {
     if (!event) return;
@@ -160,6 +174,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
   if (!event) return null;
 
   const isOwner = event.createdBy === user?.uid;
+  const isManager = isOwner || userEventRole === EVENT_ROLES.ORGANIZER || userRole === USER_ROLES.ADMIN;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -240,7 +255,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={handleAddCollaborator}
-            disabled={loading || !isOwner || !newUserEmail.trim()}
+            disabled={loading || !isManager || !newUserEmail.trim()}
             fullWidth
           >
             Add Collaborator
@@ -266,7 +281,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
                   variant="outlined"
                   startIcon={<CopyIcon />}
                   onClick={() => handleCopyInviteLink(role)}
-                  disabled={!isOwner}
+                  disabled={!isManager}
                 >
                   {EVENT_ROLE_LABELS[role]} Link
                 </Button>
@@ -301,7 +316,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
                     size="small"
                     sx={{ mr: 1 }}
                   />
-                  {isOwner && (
+                  {isManager && (
                     <ListItemSecondaryAction>
                       <IconButton
                         edge="end"

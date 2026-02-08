@@ -63,6 +63,7 @@ const EventDetail = () => {
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
+  const [collaborationRecipient, setCollaborationRecipient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processingStage, setProcessingStage] = useState(false);
   const [userEventRole, setUserEventRole] = useState(null);
@@ -711,8 +712,9 @@ const EventDetail = () => {
           event={currentEvent}
           userEventRole={userEventRole}
           onMessageUser={(member, role) => {
-            // Open collaboration dialog with pre-selected recipient
-            setCollaborationOpen(true);
+              // Open collaboration dialog with pre-selected recipient
+              setCollaborationRecipient(member);
+              setCollaborationOpen(true);
           }}
         />
       </Box>
@@ -1053,8 +1055,12 @@ const EventDetail = () => {
       {/* Event Collaboration Dialog */}
       <EnhancedEventCollaboration
         open={collaborationOpen}
-        onClose={() => setCollaborationOpen(false)}
+        onClose={() => {
+          setCollaborationOpen(false);
+          setCollaborationRecipient(null);
+        }}
         event={currentEvent}
+        initialRecipient={collaborationRecipient}
       />
     </Container>
   );

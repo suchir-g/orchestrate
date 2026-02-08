@@ -85,9 +85,9 @@ export const getUserAccessibleEvents = async (userId, userRole = USER_ROLES.ATTE
  */
 export const getUserEventRole = async (eventId, userId, userRole) => {
   try {
-    // Admins are always treated as owners
+    // Admins are mapped to organizer role for events
     if (userRole === USER_ROLES.ADMIN) {
-      return EVENT_ROLES.OWNER;
+      return EVENT_ROLES.ORGANIZER;
     }
 
     const eventRef = doc(db, COLLECTIONS.EVENTS, eventId);
@@ -99,9 +99,9 @@ export const getUserEventRole = async (eventId, userId, userRole) => {
 
     const eventData = eventDoc.data();
 
-    // Check if user is the owner
+    // Treat event creator as an organizer (no separate owner role)
     if (eventData.createdBy === userId) {
-      return EVENT_ROLES.OWNER;
+      return EVENT_ROLES.ORGANIZER;
     }
 
     // Check collaborators array for specific role

@@ -331,6 +331,10 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setUserProfile(null);
       toast.success('Signed out successfully!');
+      // Refresh and navigate back to home to clear any stateful listeners/views
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
       return { error: null };
     } catch (error) {
       toast.error('Failed to sign out');

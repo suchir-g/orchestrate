@@ -22,6 +22,27 @@ import { db } from '../config/firebase';
 const THREADS_COLLECTION = 'messageThreads';
 const MESSAGES_COLLECTION = 'threadMessages';
 
+// Helper to parse various timestamp formats stored in Firestore or legacy data
+const parseTimestamp = (value) => {
+  if (!value) return null;
+  // Firestore Timestamp
+  if (value?.toDate) return value.toDate();
+  // JS Date
+  if (value instanceof Date) return value;
+  // number (seconds or milliseconds)
+  if (typeof value === 'number') {
+    // Heuristic: if seconds (10 digits), convert to ms
+    if (value < 1e12) return new Date(value * 1000);
+    return new Date(value);
+  }
+  // ISO string
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return null;
+};
+
 /**
  * Thread status
  */
@@ -122,14 +143,25 @@ export const sendThreadMessage = async (threadId, senderId, senderName, content)
       isRead: false,
     };
 
+    // Check thread status before adding message
+    const threadRef = doc(db, THREADS_COLLECTION, threadId);
+    const threadDoc = await getDoc(threadRef);
+    if (threadDoc.exists()) {
+      const threadData = threadDoc.data();
+      if (threadData.status === THREAD_STATUS.RESOLVED) {
+        return { messageId: null, error: 'Thread is resolved and cannot accept new messages' };
+      }
+    }
+
     const docRef = await addDoc(messagesRef, message);
 
     // Update thread's lastMessageAt and increment unread counts
-    const threadRef = doc(db, THREADS_COLLECTION, threadId);
-    const threadDoc = await getDoc(threadRef);
+    // Use fresh variables to avoid redeclaration collisions
+    const threadRef2 = doc(db, THREADS_COLLECTION, threadId);
+    const threadDoc2 = await getDoc(threadRef2);
 
-    if (threadDoc.exists()) {
-      const threadData = threadDoc.data();
+    if (threadDoc2.exists()) {
+      const threadData = threadDoc2.data();
       const newUnreadCount = { ...threadData.unreadCount };
 
       // Increment unread for all recipients except sender
@@ -139,14 +171,27 @@ export const sendThreadMessage = async (threadId, senderId, senderName, content)
         }
       });
 
-      await updateDoc(threadRef, {
+      await updateDoc(threadRef2, {
         lastMessageAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         unreadCount: newUnreadCount,
       });
     }
 
-    return { messageId: docRef.id, error: null };
+    // Return the created message object for optimistic UI updates
+    return {
+      messageId: docRef.id,
+      message: {
+        id: docRef.id,
+        threadId,
+        senderId,
+        senderName,
+        content,
+        createdAt: new Date(), // local placeholder
+        isRead: false,
+      },
+      error: null,
+    };
   } catch (error) {
     console.error('Error sending message:', error);
     return { messageId: null, error: error.message };
@@ -160,6 +205,42 @@ export const sendThreadMessage = async (threadId, senderId, senderName, content)
  */
 export const getThreadMessages = async (threadId) => {
   try {
+    // Handle legacy eventMessages (pseudo-threads) which we surface as `legacy-<id>`
+    if (typeof threadId === 'string' && threadId.startsWith('legacy-')) {
+      const originalId = threadId.replace('legacy-', '');
+      const legacyDocRef = doc(db, 'eventMessages', originalId);
+      const legacySnap = await getDoc(legacyDocRef);
+      if (!legacySnap.exists()) return { data: [], error: null };
+
+      const data = legacySnap.data();
+      // Primary message
+      const baseMsg = {
+        id: `legacy-${originalId}`,
+        threadId,
+        senderId: data.userId,
+        senderName: data.userName || data.userId,
+        content: data.content || data.message || '',
+        createdAt: parseTimestamp(data.createdAt) || new Date(),
+        isRead: false,
+        legacy: true,
+      };
+
+      // If there are responses stored on the legacy doc, map them as subsequent messages
+      const responses = (data.responses || []).map((r, idx) => ({
+        id: `legacy-${originalId}-r-${idx}`,
+        threadId,
+        senderId: r.userId,
+        senderName: r.userName || r.userId,
+        content: r.content || r.message || '',
+        createdAt: parseTimestamp(r.createdAt) || new Date(),
+        isRead: false,
+        legacy: true,
+      }));
+
+      const all = [baseMsg, ...responses].sort((a, b) => a.createdAt - b.createdAt);
+      return { data: all, error: null };
+    }
+
     const messagesRef = collection(db, MESSAGES_COLLECTION);
     const q = query(
       messagesRef,
@@ -171,7 +252,7 @@ export const getThreadMessages = async (threadId) => {
     const messages = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.() || new Date(),
+      createdAt: parseTimestamp(doc.data().createdAt) || new Date(),
     }));
 
     return { data: messages, error: null };
@@ -189,6 +270,57 @@ export const getThreadMessages = async (threadId) => {
  */
 export const listenToThreadMessages = (threadId, callback) => {
   try {
+    console.log(`🎯 Setting up message listener for thread: ${threadId}`);
+    
+    // If this is a legacy pseudo-thread, listen to the eventMessages doc
+    if (typeof threadId === 'string' && threadId.startsWith('legacy-')) {
+      const originalId = threadId.replace('legacy-', '');
+      const legacyDocRef = doc(db, 'eventMessages', originalId);
+      
+      console.log(`📬 Listening to legacy eventMessages doc: ${originalId}`);
+      
+      return onSnapshot(legacyDocRef, (snap) => {
+        if (!snap.exists()) {
+          console.warn(`⚠️ Legacy doc ${originalId} does not exist`);
+          return callback([]);
+        }
+        
+        const data = snap.data();
+        console.log(`✅ Got legacy message doc, content length: ${(data.content || '').length}`);
+        
+        const baseMsg = {
+          id: `legacy-${originalId}`,
+          threadId,
+          senderId: data.userId,
+          senderName: data.userName || data.userId,
+          content: data.content || data.message || '',
+          createdAt: parseTimestamp(data.createdAt) || new Date(),
+          isRead: false,
+          legacy: true,
+        };
+
+        // If there are responses stored on the legacy doc, map them as subsequent messages
+        const responses = (data.responses || []).map((r, idx) => ({
+          id: `legacy-${originalId}-r-${idx}`,
+          threadId,
+          senderId: r.userId,
+          senderName: r.userName || r.userId,
+          content: r.content || r.message || '',
+          createdAt: parseTimestamp(r.createdAt) || new Date(),
+          isRead: false,
+          legacy: true,
+        }));
+
+        const all = [baseMsg, ...responses].sort((a, b) => a.createdAt - b.createdAt);
+        console.log(`📨 Emitting ${all.length} legacy messages`);
+        callback(all);
+      }, (error) => {
+        console.error(`❌ Error listening to legacy doc ${originalId}:`, error);
+        callback([]);
+      });
+    }
+
+    // Regular thread messages listener
     const messagesRef = collection(db, MESSAGES_COLLECTION);
     const q = query(
       messagesRef,
@@ -196,13 +328,19 @@ export const listenToThreadMessages = (threadId, callback) => {
       orderBy('createdAt', 'asc')
     );
 
+    console.log(`💬 Listening to threadMessages for thread: ${threadId}`);
+
     return onSnapshot(q, (querySnapshot) => {
       const messages = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.() || new Date(),
+        createdAt: parseTimestamp(doc.data().createdAt) || new Date(),
       }));
+      console.log(`✅ Got ${messages.length} messages for thread ${threadId}`);
       callback(messages);
+    }, (error) => {
+      console.error(`❌ Error listening to thread messages ${threadId}:`, error);
+      callback([]);
     });
   } catch (error) {
     console.error('Error listening to thread messages:', error);
@@ -229,8 +367,8 @@ export const getUserThreads = async (userId) => {
     const threads = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.() || new Date(),
-      lastMessageAt: doc.data().lastMessageAt?.toDate?.() || new Date(),
+      createdAt: parseTimestamp(doc.data().createdAt) || new Date(),
+      lastMessageAt: parseTimestamp(doc.data().lastMessageAt) || new Date(),
     }));
 
     console.log(`✅ Found ${threads.length} threads for user ${userId}`);
@@ -253,28 +391,234 @@ export const getUserThreads = async (userId) => {
  * @param {string} userId - User ID (to filter by user's threads)
  * @returns {Promise<Object>} { data, error }
  */
-export const getEventThreads = async (eventId, userId) => {
+export const getEventThreads = async (eventId, userId, userRole = null) => {
   try {
     const threadsRef = collection(db, THREADS_COLLECTION);
-    const q = query(
-      threadsRef,
-      where('eventId', '==', eventId),
-      where('recipients', 'array-contains', userId),
-      orderBy('lastMessageAt', 'desc')
-    );
+    const legacyRef = collection(db, 'eventMessages');
+    let q;
+
+    // Admins should be able to see all threads for the event
+    if (userRole === 'admin') {
+      q = query(
+        threadsRef,
+        where('eventId', '==', eventId),
+        orderBy('lastMessageAt', 'desc')
+      );
+    } else {
+      q = query(
+        threadsRef,
+        where('eventId', '==', eventId),
+        where('recipients', 'array-contains', userId),
+        orderBy('lastMessageAt', 'desc')
+      );
+    }
 
     const querySnapshot = await getDocs(q);
     const threads = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.() || new Date(),
-      lastMessageAt: doc.data().lastMessageAt?.toDate?.() || new Date(),
+      createdAt: parseTimestamp(doc.data().createdAt) || new Date(),
+      lastMessageAt: parseTimestamp(doc.data().lastMessageAt) || new Date(),
     }));
 
-    return { data: threads, error: null };
+    // Load legacy eventMessages
+    let legacyThreads = [];
+    try {
+      // Try with eventId filter first
+      const legacyQ = query(legacyRef, where('eventId', '==', eventId), orderBy('createdAt', 'desc'));
+      const legacySnapshot = await getDocs(legacyQ);
+      legacyThreads = legacySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: `legacy-${doc.id}`,
+          legacy: true,
+          originalId: doc.id,
+          eventId: data.eventId || eventId,
+          subject: (data.content || data.messageType || '').slice(0, 80),
+          createdBy: data.userId,
+          createdByName: data.userName || data.userId,
+          recipients: [data.userId],
+          status: data.status || THREAD_STATUS.OPEN,
+          unreadCount: {},
+          createdAt: parseTimestamp(data.createdAt) || new Date(),
+          lastMessageAt: parseTimestamp(data.createdAt) || new Date(),
+        };
+      });
+      console.log(`✅ Loaded ${legacyThreads.length} legacy messages for event ${eventId}`);
+    } catch (legacyErr) {
+      console.warn(`⚠️ Legacy query failed, trying fallback:`, legacyErr.message);
+      try {
+        // Fallback: load all and filter client-side
+        const legacyQFallback = query(legacyRef, orderBy('createdAt', 'desc'));
+        const legacySnapshot = await getDocs(legacyQFallback);
+        legacyThreads = legacySnapshot.docs
+          .filter(doc => {
+            const data = doc.data();
+            return data.eventId === eventId || !data.eventId;
+          })
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: `legacy-${doc.id}`,
+              legacy: true,
+              originalId: doc.id,
+              eventId: data.eventId || eventId,
+              subject: (data.content || data.messageType || '').slice(0, 80),
+              createdBy: data.userId,
+              createdByName: data.userName || data.userId,
+              recipients: [data.userId],
+              status: data.status || THREAD_STATUS.OPEN,
+              unreadCount: {},
+              createdAt: parseTimestamp(data.createdAt) || new Date(),
+              lastMessageAt: parseTimestamp(data.createdAt) || new Date(),
+            };
+          });
+        console.log(`✅ Loaded ${legacyThreads.length} legacy messages (fallback)`);
+      } catch (fallbackErr) {
+        console.error(`❌ Both legacy queries failed:`, fallbackErr);
+      }
+    }
+
+    const combined = [...threads, ...legacyThreads].sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+    console.log(`📊 getEventThreads: ${combined.length} total threads (${threads.length} new + ${legacyThreads.length} legacy)`);
+    
+    return { data: combined, error: null };
   } catch (error) {
     console.error('Error getting event threads:', error);
     return { data: [], error: error.message };
+  }
+};
+
+/**
+ * Listen to threads for a specific event in real-time
+ * @param {string} eventId
+ * @param {string} userId
+ * @param {Function} callback
+ * @param {string|null} userRole
+ * @returns {Function} unsubscribe
+ */
+export const listenToEventThreads = (eventId, userId, callback, userRole = null) => {
+  try {
+    const threadsRef = collection(db, THREADS_COLLECTION);
+    const legacyRef = collection(db, 'eventMessages');
+
+    let q;
+    if (userRole === 'admin') {
+      q = query(
+        threadsRef,
+        where('eventId', '==', eventId),
+        orderBy('lastMessageAt', 'desc')
+      );
+    } else {
+      q = query(
+        threadsRef,
+        where('eventId', '==', eventId),
+        where('recipients', 'array-contains', userId),
+        orderBy('lastMessageAt', 'desc')
+      );
+    }
+
+    let latestThreads = [];
+    let latestLegacy = [];
+
+    const emitCombined = () => {
+      const combined = [...latestThreads, ...latestLegacy].sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+      console.log(`📨 Emitting ${combined.length} total threads (${latestThreads.length} new + ${latestLegacy.length} legacy)`);
+      callback(combined);
+    };
+
+    const unsubThreads = onSnapshot(q, (querySnapshot) => {
+      latestThreads = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: parseTimestamp(doc.data().createdAt) || new Date(),
+        lastMessageAt: parseTimestamp(doc.data().lastMessageAt) || new Date(),
+      }));
+      console.log(`✅ Loaded ${latestThreads.length} new messageThreads for event ${eventId}`);
+      emitCombined();
+    }, (error) => {
+      console.error('❌ Error listening to event threads:', error);
+      emitCombined();
+    });
+
+    // Try to load legacy messages with eventId filter first
+    const unsubLegacy = onSnapshot(
+      query(legacyRef, where('eventId', '==', eventId), orderBy('createdAt', 'desc')),
+      (querySnapshot) => {
+        latestLegacy = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: `legacy-${doc.id}`,
+            legacy: true,
+            originalId: doc.id,
+            eventId: data.eventId,
+            subject: (data.content || data.messageType || '').slice(0, 80),
+            createdBy: data.userId,
+            createdByName: data.userName || data.userId,
+            recipients: [data.userId],
+            status: data.status || THREAD_STATUS.OPEN,
+            unreadCount: {},
+            createdAt: parseTimestamp(data.createdAt) || new Date(),
+            lastMessageAt: parseTimestamp(data.createdAt) || new Date(),
+          };
+        });
+        console.log(`📬 Loaded ${latestLegacy.length} legacy eventMessages for event ${eventId}`);
+        emitCombined();
+      },
+      (error) => {
+        console.warn('⚠️ Legacy query with eventId filter failed, trying without filter:', error.message);
+        // Fallback: try loading ALL legacy messages and filter client-side
+        try {
+          const legacyQFallback = query(legacyRef, orderBy('createdAt', 'desc'));
+          const unsubFallback = onSnapshot(
+            legacyQFallback,
+            (querySnapshot) => {
+              latestLegacy = querySnapshot.docs
+                .filter(doc => {
+                  const data = doc.data();
+                  return data.eventId === eventId || !data.eventId; // Include if eventId matches or missing
+                })
+                .map(doc => {
+                  const data = doc.data();
+                  return {
+                    id: `legacy-${doc.id}`,
+                    legacy: true,
+                    originalId: doc.id,
+                    eventId: data.eventId || eventId,
+                    subject: (data.content || data.messageType || '').slice(0, 80),
+                    createdBy: data.userId,
+                    createdByName: data.userName || data.userId,
+                    recipients: [data.userId],
+                    status: data.status || THREAD_STATUS.OPEN,
+                    unreadCount: {},
+                    createdAt: parseTimestamp(data.createdAt) || new Date(),
+                    lastMessageAt: parseTimestamp(data.createdAt) || new Date(),
+                  };
+                });
+              console.log(`📬 Loaded ${latestLegacy.length} legacy eventMessages (fallback)`);
+              emitCombined();
+            },
+            (err2) => {
+              console.error('❌ Both legacy queries failed:', err2);
+              emitCombined();
+            }
+          );
+          return unsubFallback;
+        } catch (e) {
+          console.error('❌ Error setting up fallback listener:', e);
+          emitCombined();
+          return () => {};
+        }
+      }
+    );
+
+    return () => {
+      try { unsubThreads(); } catch (e) { /* ignore */ }
+      try { unsubLegacy(); } catch (e) { /* ignore */ }
+    };
+  } catch (error) {
+    console.error('Error setting up event thread listener:', error);
+    return () => {};
   }
 };
 
@@ -324,6 +668,8 @@ export const resolveThread = async (threadId, userId, userName) => {
       resolvedBy: userId,
       resolvedByName: userName,
       updatedAt: serverTimestamp(),
+      // Ensure the thread remains present in event thread queries sorted by lastMessageAt
+      lastMessageAt: serverTimestamp(),
     });
 
     return { error: null };
@@ -408,8 +754,8 @@ export const listenToUserThreads = (userId, callback) => {
       const threads = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.() || new Date(),
-        lastMessageAt: doc.data().lastMessageAt?.toDate?.() || new Date(),
+        createdAt: parseTimestamp(doc.data().createdAt) || new Date(),
+        lastMessageAt: parseTimestamp(doc.data().lastMessageAt) || new Date(),
       }));
       callback(threads);
     });
