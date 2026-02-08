@@ -3,7 +3,7 @@
  * Allows event owners/organizers to manage collaborators and access control
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -45,6 +45,7 @@ import {
   generateEventInviteLink,
   canManageCollaborators,
 } from '../../services/accessControlService';
+import { getAccountByEmail } from '../../services/accountService';
 import {
   EVENT_ROLES,
   EVENT_ROLE_LABELS,
@@ -55,9 +56,9 @@ import {
 } from '../../utils/roleConstants';
 import { useAuth } from '../../context/AuthContext';
 import { getUserEventRole } from '../../services/accessControlService';
-import { USER_ROLES } from '../../utils/roleConstants';
 
 const EventSharing = ({ open, onClose, event, onUpdate }) => {
+  console.log('🔴 EventSharing component rendered! open:', open, 'event:', event?.id, 'event:', event);
   const { user } = useAuth();
   const { userRole } = useAuth();
   const [collaborators, setCollaborators] = useState([]);
@@ -67,13 +68,25 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const loadCollaborators = useCallback(async () => {
+    if (!event) return;
+
+    const { data, error } = await getEventCollaborators(event.id);
+    if (error) {
+      console.error('Error loading collaborators:', error);
+      toast.error('Failed to load collaborators');
+    } else {
+      setCollaborators(data || []);
+    }
+  }, [event]);
+
   // Load collaborators
   useEffect(() => {
     if (open && event) {
       loadCollaborators();
       setVisibility(event.visibility || EVENT_VISIBILITY.PRIVATE);
     }
-  }, [open, event]);
+  }, [open, event, loadCollaborators]);
 
   // Load user's event role to determine permissions (owner/organizer/admin)
   const [userEventRole, setUserEventRole] = useState(null);
@@ -91,33 +104,37 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
   useEffect(() => {
     const loadCanManage = async () => {
       if (!event || !user) {
+        console.log('EventSharing: Missing event or user', { hasEvent: !!event, hasUser: !!user });
         setCanManage(false);
         return;
       }
+      
       // Event creator should always be able to manage collaborators
-      if (event.createdBy === user.uid) {
+      const isCreator = event.createdBy === user.uid;
+      console.log('EventSharing: Permission check', {
+        eventCreatedBy: event.createdBy,
+        userId: user.uid,
+        isCreator,
+        eventId: event.id,
+      });
+      
+      if (isCreator) {
+        console.log('EventSharing: User is event creator - allowing management');
         setCanManage(true);
         return;
       }
 
       const allowed = await canManageCollaborators(event.id, user.uid, userRole);
+      console.log('EventSharing: Permission check via service', { allowed });
       setCanManage(Boolean(allowed));
     };
 
     loadCanManage();
   }, [event, user, userRole]);
 
-  const loadCollaborators = async () => {
-    if (!event) return;
-
-    const { data, error } = await getEventCollaborators(event.id);
-    if (error) {
-      console.error('Error loading collaborators:', error);
-      toast.error('Failed to load collaborators');
-    } else {
-      setCollaborators(data || []);
-    }
-  };
+  useEffect(() => {
+    console.log('EventSharing: canManage state changed to:', canManage);
+  }, [canManage]);
 
   const handleAddCollaborator = async () => {
     if (!newUserEmail.trim()) {
@@ -128,24 +145,39 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
     setLoading(true);
     setError(null);
 
-    // TODO: In production, you'd need to look up user by email first
-    // For now, we'll use a placeholder userId
-    const userId = `user_${newUserEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    try {
+      // Look up user by email in the accounts collection
+      const account = await getAccountByEmail(newUserEmail.trim());
+      
+      if (!account) {
+        setError('User not found. Make sure they have an account in the system.');
+        toast.error('User not found. Make sure they have an account in the system.');
+        setLoading(false);
+        return;
+      }
 
-    const result = await addEventCollaborator(event.id, userId, newUserRole);
+      const userId = account.userId;
+      console.log('EventSharing: Found user by email:', { email: newUserEmail, userId });
 
-    if (result.error) {
-      setError(result.error);
-      toast.error(`Failed to add collaborator: ${result.error}`);
-    } else {
-      toast.success(`Added ${newUserEmail} as ${EVENT_ROLE_LABELS[newUserRole]}`);
-      setNewUserEmail('');
-      setNewUserRole(EVENT_ROLES.VIEWER);
-      loadCollaborators();
-      if (onUpdate) onUpdate();
+      const result = await addEventCollaborator(event.id, userId, newUserRole);
+
+      if (result.error) {
+        setError(result.error);
+        toast.error(`Failed to add collaborator: ${result.error}`);
+      } else {
+        toast.success(`Added ${newUserEmail} as ${EVENT_ROLE_LABELS[newUserRole]}`);
+        setNewUserEmail('');
+        setNewUserRole(EVENT_ROLES.VIEWER);
+        loadCollaborators();
+        if (onUpdate) onUpdate();
+      }
+    } catch (err) {
+      console.error('Error adding collaborator:', err);
+      setError(err.message);
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleRemoveCollaborator = async (collaborator) => {
@@ -193,18 +225,31 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
     }
   };
 
-  if (!event) return null;
+  if (!event) {
+    console.log('EventSharing: event is null, returning nothing');
+    return null;
+  }
+
+  console.log('EventSharing: Rendering dialog with event:', event.id, 'createdBy:', event.createdBy, 'user.uid:', user?.uid);
 
   const isOwner = event.createdBy === user?.uid;
-  const isManager = isOwner || userEventRole === EVENT_ROLES.ORGANIZER || userRole === USER_ROLES.ADMIN;
+
+  console.log('🔴 EventSharing RENDERING! open:', open, 'isOwner:', isOwner, 'canManage:', canManage);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        Share "{event.name}"
+      <DialogTitle sx={{ backgroundColor: '#ff0000', color: 'white' }}>
+        🔴 DIALOG IS OPEN - Share "{event.name}"
       </DialogTitle>
 
-      <DialogContent>
+      <DialogContent sx={{ backgroundColor: '#ffeb3b' }}>
+        {/* DEBUG: Show current state */}
+        <Box sx={{ p: 2, bgcolor: '#f0f0f0', mb: 2, borderRadius: 1, border: '3px solid red' }}>
+          <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+            [DEBUG] canManage: {String(canManage)} | isOwner: {String(isOwner)} | event.createdBy: {event.createdBy} | user.uid: {user?.uid}
+          </Typography>
+        </Box>
+
         {/* Visibility Settings */}
         <Box sx={{ mb: 3 }}>
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -273,14 +318,23 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
             </FormControl>
           </Box>
 
-          <Button
+          {console.log('EventSharing: Add Collaborator section - canManage:', canManage, 'loading:', loading, 'button should be', canManage ? 'ENABLED' : 'DISABLED')}
+
+        <Box sx={{ p: 2, bgcolor: '#fff3e0', mb: 2, borderRadius: 1, border: '2px solid red' }}>
+          <Typography variant="caption">
+            [BUTTON DEBUG] canManage={String(canManage)} loading={String(loading)} email.trim()={String(!!newUserEmail.trim())} disabled={String(loading || !canManage || !newUserEmail.trim())}
+          </Typography>
+        </Box>
+
+        <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={handleAddCollaborator}
             disabled={loading || !canManage || !newUserEmail.trim()}
             fullWidth
+            sx={{ backgroundColor: 'red' }}
           >
-            Add Collaborator
+            Add Collaborator [SHOULD BE VISIBLE]
           </Button>
         </Box>
 

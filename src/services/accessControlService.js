@@ -342,6 +342,90 @@ export const getEventCollaborators = async (eventId) => {
   }
 };
 
+/**
+ * Get organizers and volunteers for an event
+ * Organizers = creator + those assigned as organizers
+ * Volunteers = those assigned as volunteers
+ * @param {string} eventId - Event ID
+ * @param {string} userId - Current user ID (for filtering if needed)
+ * @returns {Promise<Object>} { organizers: [...], volunteers: [...], error: null }
+ */
+export const getEventTeams = async (eventId, userId = null) => {
+  try {
+    const eventRef = doc(db, COLLECTIONS.EVENTS, eventId);
+    const eventDoc = await getDoc(eventRef);
+
+    if (!eventDoc.exists()) {
+      return { organizers: [], volunteers: [], error: 'Event not found' };
+    }
+
+    const eventData = eventDoc.data();
+    const collaborators = eventData.collaborators || [];
+    
+    // Helper function to get user display name
+    const getUserDisplayName = async (uid) => {
+      try {
+        const userRef = doc(db, 'userProfiles', uid);
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          return userDoc.data().displayName || userDoc.data().email || uid;
+        }
+        return uid;
+      } catch (err) {
+        console.warn('Could not fetch user profile for', uid);
+        return uid;
+      }
+    };
+    
+    // Organizers: event creator + collaborators with organizer role
+    const organizers = [];
+    
+    // Add event creator as organizer
+    if (eventData.createdBy) {
+      const creatorName = await getUserDisplayName(eventData.createdBy);
+      organizers.push({
+        id: eventData.createdBy,
+        displayName: creatorName,
+        role: EVENT_ROLES.ORGANIZER,
+        isCreator: true,
+      });
+    }
+    
+    // Add collaborators with organizer role
+    for (const collab of collaborators) {
+      if (collab.role === EVENT_ROLES.ORGANIZER && collab.userId !== eventData.createdBy) {
+        const collabName = await getUserDisplayName(collab.userId);
+        organizers.push({
+          id: collab.userId,
+          displayName: collabName,
+          role: EVENT_ROLES.ORGANIZER,
+          isCreator: false,
+          ...collab,
+        });
+      }
+    }
+
+    // Volunteers: collaborators with volunteer role only
+    const volunteers = [];
+    for (const collab of collaborators) {
+      if (collab.role === EVENT_ROLES.VOLUNTEER) {
+        const volName = await getUserDisplayName(collab.userId);
+        volunteers.push({
+          id: collab.userId,
+          displayName: volName,
+          role: EVENT_ROLES.VOLUNTEER,
+          ...collab,
+        });
+      }
+    }
+
+    return { organizers, volunteers, error: null };
+  } catch (error) {
+    console.error('Error getting event teams:', error);
+    return { organizers: [], volunteers: [], error: error.message };
+  }
+};
+
 // ========== EVENT VISIBILITY ==========
 
 /**
