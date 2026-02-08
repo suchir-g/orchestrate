@@ -25,7 +25,6 @@ import {
   Select,
   MenuItem,
   IconButton,
-  Divider,
   Badge,
   Tabs,
   Tab,
@@ -38,7 +37,6 @@ import {
   CheckCircle as ResolveIcon,
   Replay as ReopenIcon,
   Message as MessageIcon,
-  Person as PersonIcon,
   Close as CloseIcon,
   ArrowBack as BackIcon,
 } from '@mui/icons-material';
