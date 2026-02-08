@@ -7,6 +7,8 @@
 
 import { addEventCollaborator } from '../services/accessControlService';
 import { EVENT_ROLES } from './roleConstants';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 /**
  * Create test team data for an event
@@ -37,6 +39,13 @@ export const createTestTeamData = async (eventId) => {
       if (result.error) {
         console.error(`❌ Failed to add organizer ${org.userId}:`, result.error);
       } else {
+        // Create user profile for display name
+        await setDoc(doc(db, 'userProfiles', org.userId), {
+          displayName: org.name,
+          email: `${org.userId}@example.com`,
+          role: 'organizer',
+          createdAt: new Date().toISOString()
+        });
         console.log(`✅ Added organizer: ${org.userId} (${org.name})`);
       }
     }
@@ -47,6 +56,13 @@ export const createTestTeamData = async (eventId) => {
       if (result.error) {
         console.error(`❌ Failed to add volunteer ${vol.userId}:`, result.error);
       } else {
+        // Create user profile for display name
+        await setDoc(doc(db, 'userProfiles', vol.userId), {
+          displayName: vol.name,
+          email: `${vol.userId}@example.com`,
+          role: 'volunteer',
+          createdAt: new Date().toISOString()
+        });
         console.log(`✅ Added volunteer: ${vol.userId} (${vol.name})`);
       }
     }

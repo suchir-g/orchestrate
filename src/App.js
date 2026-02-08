@@ -27,6 +27,7 @@ import AccountPage from './components/Account/AccountPage';
 import MessageCenter from './components/MessageCenter/MessageCenter';
 // Hackathon features
 import ScheduleBuilder from './components/Scheduling/ScheduleBuilder';
+import VolunteerDashboard from './components/Volunteers/VolunteerDashboard';
 import EventDetail from './components/EventDetail/EventDetail';
 
 import './App.css';
@@ -141,6 +142,7 @@ function App() {
                     {/* Hackathon features */}
                     <Route path="/event/:eventId" element={<EventDetail />} />
                     <Route path="/schedule/:eventId" element={<ScheduleBuilder />} />
+                    <Route path="/volunteers/:eventId" element={<VolunteerDashboard />} />
                   </Routes>
                 </Box>
                 <Toaster position="top-right" />

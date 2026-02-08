@@ -139,7 +139,7 @@ const EventCollaboration = ({ open, onClose, event }) => {
       toast.error('Failed to approve request');
     } else {
       toast.success('Session request approved! You can now add it to the schedule.');
-      // TODO: Optionally auto-create schedule block with session details
+      console.info('Session approved. Organizer should manually add to schedule.');
     }
   };
 

@@ -5,7 +5,7 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 // Your web app's Firebase configuration 
-// TODO: Replace with your actual Firebase config from Firebase Console
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBWk4zNbXTglkvqPPA3UC-6D-MhzkhF2YY",
   authDomain: "orchestrate-3fede.firebaseapp.com",
