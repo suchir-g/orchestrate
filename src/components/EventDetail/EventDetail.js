@@ -49,7 +49,8 @@ import { getAllScheduleBlocks } from '../../services/scheduleService';
 import EventSharing from '../EventSharing/EventSharing';
 import EnhancedEventCollaboration from '../EventCollaboration/EnhancedEventCollaboration';
 import EventTeam from '../EventTeam/EventTeam';
-import { getUserEventRole } from '../../services/accessControlService';
+import EventTeamDisplay from '../EventTeamDisplay/EventTeamDisplay';
+import { getUserEventRole, canManageCollaborators } from '../../services/accessControlService';
 import { EVENT_ROLES, PERMISSIONS, hasEventPermission } from '../../utils/roleConstants';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -67,6 +68,7 @@ const EventDetail = () => {
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
+  const [collaborationRecipient, setCollaborationRecipient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processingStage, setProcessingStage] = useState(false);
   const [userEventRole, setUserEventRole] = useState(null);
@@ -89,11 +91,12 @@ const EventDetail = () => {
       if (!eventId || !user) return;
 
       const role = await getUserEventRole(eventId, user.uid, userRole);
+      console.log('🟢 EventDetail: getUserEventRole returned:', role, 'for user:', user.uid, 'eventId:', eventId, 'currentEvent.createdBy:', currentEvent?.createdBy);
       setUserEventRole(role);
     };
 
     loadUserEventRole();
-  }, [eventId, user, userRole]);
+  }, [eventId, user, userRole, currentEvent?.createdBy]);
 
   // Load schedule blocks
   useEffect(() => {
@@ -193,14 +196,36 @@ const EventDetail = () => {
 
   // Permission check helpers
   const canShareEvent = useMemo(() => {
-    if (!userEventRole) return false;
-    return hasEventPermission(userEventRole, PERMISSIONS.EVENT_SHARE);
-  }, [userEventRole]);
+    // Event creator can always share/add collaborators
+    if (currentEvent?.createdBy === user?.uid) {
+      console.log('🟡 canShareEvent: true (user is event creator)');
+      return true;
+    }
+    // Otherwise check role-based permissions
+    if (!userEventRole) {
+      console.log('🟡 canShareEvent: false because userEventRole is null');
+      return false;
+    }
+    const hasPermission = hasEventPermission(userEventRole, PERMISSIONS.EVENT_SHARE);
+    console.log('🟡 canShareEvent:', hasPermission, 'userEventRole:', userEventRole);
+    return hasPermission;
+  }, [userEventRole, currentEvent?.createdBy, user?.uid]);
 
   const canEditEvent = useMemo(() => {
     if (!userEventRole) return false;
     return hasEventPermission(userEventRole, PERMISSIONS.EVENT_EDIT);
   }, [userEventRole]);
+
+  const [canManageCollabs, setCanManageCollabs] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      if (!user || !eventId) return setCanManageCollabs(false);
+      const ok = await canManageCollaborators(eventId, user.uid, userRole);
+      setCanManageCollabs(Boolean(ok));
+    };
+    check();
+  }, [user, eventId, userRole]);
 
   const handleCloseValidation = () => {
     setValidationDialogOpen(false);
@@ -494,11 +519,14 @@ const EventDetail = () => {
           <Box sx={{ display: 'flex', gap: 2 }}>
             {canShareEvent && (
               <Button
-                variant="outlined"
+                variant="contained"
                 startIcon={<ShareIcon />}
-                onClick={() => setSharingOpen(true)}
+                onClick={() => {
+                  console.log('🔵 Clicked Share button - opening EventSharing dialog');
+                  setSharingOpen(true);
+                }}
               >
-                Share
+                Share & Add Collaborators
               </Button>
             )}
 
@@ -513,7 +541,7 @@ const EventDetail = () => {
               </Button>
             )}
 
-            {canEditEvent && (
+            {canManageCollabs && (
               <Button
                 variant="contained"
                 startIcon={<EditIcon />}
@@ -526,7 +554,7 @@ const EventDetail = () => {
               </Button>
             )}
 
-            {canEditEvent && (
+            {canManageCollabs && (
               <Tooltip
                 title={allChecksPassed ? 'All requirements met - ready to proceed' : 'Complete all requirements first'}
               >
@@ -910,12 +938,27 @@ const EventDetail = () => {
 
       {/* Event Team Members */}
       <Box sx={{ mb: 4 }}>
+        <Typography variant="h6" sx={{ mb: 2 }}>
+          👥 Team Structure
+        </Typography>
+        <EventTeamDisplay 
+          event={currentEvent}
+          onMessageClick={(member) => {
+            setCollaborationRecipient(member);
+            setCollaborationOpen(true);
+          }}
+        />
+      </Box>
+
+      {/* Detailed Event Team Members */}
+      <Box sx={{ mb: 4 }}>
         <EventTeam
           event={currentEvent}
           userEventRole={userEventRole}
           onMessageUser={(member, role) => {
-            // Open collaboration dialog with pre-selected recipient
-            setCollaborationOpen(true);
+              // Open collaboration dialog with pre-selected recipient
+              setCollaborationRecipient(member);
+              setCollaborationOpen(true);
           }}
         />
       </Box>
@@ -1384,8 +1427,12 @@ const EventDetail = () => {
       {/* Event Collaboration Dialog */}
       <EnhancedEventCollaboration
         open={collaborationOpen}
-        onClose={() => setCollaborationOpen(false)}
+        onClose={() => {
+          setCollaborationOpen(false);
+          setCollaborationRecipient(null);
+        }}
         event={currentEvent}
+        initialRecipient={collaborationRecipient}
       />
     </Container>
   );

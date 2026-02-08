@@ -25,7 +25,6 @@ import {
   Select,
   MenuItem,
   IconButton,
-  Divider,
   Badge,
   Tabs,
   Tab,
@@ -38,7 +37,6 @@ import {
   CheckCircle as ResolveIcon,
   Replay as ReopenIcon,
   Message as MessageIcon,
-  Person as PersonIcon,
   Close as CloseIcon,
   ArrowBack as BackIcon,
 } from '@mui/icons-material';
@@ -50,6 +48,7 @@ import {
   createMessageThread,
   sendThreadMessage,
   getEventThreads,
+  listenToEventThreads,
   listenToThreadMessages,
   markThreadAsRead,
   resolveThread,
@@ -102,26 +101,31 @@ const EnhancedEventCollaboration = ({ open, onClose, event, initialRecipient = n
     loadTeam();
   }, [event]);
 
-  // Load threads
+  // Listen to threads for this event in real-time so recipients see new threads immediately
   useEffect(() => {
-    const loadThreads = async () => {
-      if (!event || !user || !open) return;
-      const { data } = await getEventThreads(event.id, user.uid);
+    if (!event || !user || !open) return;
+
+    const unsubscribe = listenToEventThreads(event.id, user.uid, (data) => {
       setThreads(data || []);
+    }, userRole);
+
+    return () => {
+      unsubscribe && unsubscribe();
     };
-    loadThreads();
-  }, [event, user, open]);
+  }, [event, user, open, userRole]);
 
   // Listen to messages in selected thread
   useEffect(() => {
-    if (!selectedThread) return;
+    if (!selectedThread || !user) return;
 
     const unsubscribe = listenToThreadMessages(selectedThread.id, (messages) => {
       setThreadMessages(messages);
     });
 
     // Mark as read when opening thread
-    markThreadAsRead(selectedThread.id, user.uid);
+    if (user && user.uid) {
+      markThreadAsRead(selectedThread.id, user.uid);
+    }
 
     return () => unsubscribe();
   }, [selectedThread, user]);
@@ -203,7 +207,7 @@ const EnhancedEventCollaboration = ({ open, onClose, event, initialRecipient = n
       setSelectedRecipients([]);
 
       // Reload threads
-      const { data } = await getEventThreads(event.id, user.uid);
+      const { data } = await getEventThreads(event.id, user.uid, userRole);
       setThreads(data || []);
     }
 
@@ -214,7 +218,7 @@ const EnhancedEventCollaboration = ({ open, onClose, event, initialRecipient = n
     if (!newMessage.trim() || !selectedThread) return;
 
     setLoading(true);
-    const { error } = await sendThreadMessage(
+    const { error, message } = await sendThreadMessage(
       selectedThread.id,
       user.uid,
       userProfile?.displayName || userProfile?.email || 'Unknown',
@@ -224,6 +228,10 @@ const EnhancedEventCollaboration = ({ open, onClose, event, initialRecipient = n
     if (error) {
       toast.error('Failed to send message');
     } else {
+      // Optimistically append the message to the conversation so sender sees it immediately
+      setThreadMessages(prev => [...prev, message]);
+      // Also update thread preview in the thread list
+      setThreads(prev => prev.map(t => t.id === selectedThread.id ? { ...t, lastMessageAt: new Date(), unreadCount: { ...(t.unreadCount || {}), [user.uid]: 0 } } : t));
       setNewMessage('');
     }
     setLoading(false);
@@ -263,18 +271,30 @@ const EnhancedEventCollaboration = ({ open, onClose, event, initialRecipient = n
     if (!thread) return false;
     return (
       thread.createdBy === user.uid ||
-      userEventRole === EVENT_ROLES.OWNER ||
       userEventRole === EVENT_ROLES.ORGANIZER
     );
   };
 
   const getAvailableRecipients = () => {
-    // Attendees/Sponsors can only message organizers
-    if (!userEventRole || userEventRole === EVENT_ROLES.VIEWER || userEventRole === EVENT_ROLES.SPONSOR) {
+    // If no role or viewer: only organizers
+    if (!userEventRole || userEventRole === EVENT_ROLES.VIEWER) {
       return teamMembers.organizers;
     }
 
-    // Volunteers/Organizers/Owners can message everyone
+    // Sponsors: only organizers
+    if (userEventRole === EVENT_ROLES.SPONSOR) {
+      return teamMembers.organizers;
+    }
+
+    // Volunteers: can message organizers and volunteers only
+    if (userEventRole === EVENT_ROLES.VOLUNTEER) {
+      return [
+        ...teamMembers.organizers,
+        ...teamMembers.volunteers,
+      ].filter(member => member.id !== user.uid);
+    }
+
+    // Organizers/owners: can message everyone (including sponsors)
     return [
       ...teamMembers.organizers,
       ...teamMembers.volunteers,
@@ -527,33 +547,47 @@ const EnhancedEventCollaboration = ({ open, onClose, event, initialRecipient = n
       </DialogTitle>
 
       <DialogContent>
-        <Paper sx={{ maxHeight: 400, overflow: 'auto', p: 2, mb: 2 }}>
-          <List>
-            {threadMessages.map((message) => (
-              <ListItem key={message.id} alignItems="flex-start">
-                <ListItemAvatar>
-                  <Avatar>
-                    {message.senderName[0]}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="subtitle2">{message.senderName}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatDistanceToNow(message.createdAt, { addSuffix: true })}
+        <Paper sx={{ maxHeight: 400, overflow: 'auto', p: 2, mb: 2, minHeight: 100 }}>
+          {threadMessages.length === 0 ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 4 }}>
+              <MessageIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="body2" color="text.secondary">
+                {selectedThread?.legacy ? 'No messages in this conversation yet' : 'Loading messages...'}
+              </Typography>
+              {selectedThread?.legacy && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                  This is a legacy conversation
+                </Typography>
+              )}
+            </Box>
+          ) : (
+            <List>
+              {threadMessages.map((message) => (
+                <ListItem key={message.id} alignItems="flex-start">
+                  <ListItemAvatar>
+                    <Avatar>
+                      {message.senderName[0]}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="subtitle2">{message.senderName}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDistanceToNow(message.createdAt, { addSuffix: true })}
+                        </Typography>
+                      </Box>
+                    }
+                    secondary={
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        {message.content}
                       </Typography>
-                    </Box>
-                  }
-                  secondary={
-                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      {message.content}
-                    </Typography>
-                  }
-                />
-              </ListItem>
-            ))}
-          </List>
+                    }
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
         </Paper>
 
         {selectedThread?.status === THREAD_STATUS.OPEN && (

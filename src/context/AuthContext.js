@@ -9,6 +9,7 @@ import {
   signUpWithEmail,
   logout as firebaseLogout
 } from '../services/firebaseAuthService';
+import { createOrUpdateAccount } from '../services/accountService';
 import { getDefaultUserRole } from '../utils/roleConstants';
 import toast from 'react-hot-toast';
 
@@ -210,6 +211,19 @@ export const AuthProvider = ({ children }) => {
         await setDoc(userDocRef, initialProfile);
         setUserProfile({ id: uid, ...initialProfile });
       }
+
+      // Also sync/create account in accounts collection
+      try {
+        await createOrUpdateAccount(uid, {
+          email: auth.currentUser?.email,
+          displayName: auth.currentUser?.displayName || '',
+          photoURL: auth.currentUser?.photoURL || '',
+        });
+        console.log('AuthContext: Synced user to accounts collection:', uid);
+      } catch (accountError) {
+        console.error('AuthContext: Error syncing to accounts collection:', accountError);
+        // Don't fail auth if account sync fails
+      }
     } catch (error) {
       console.error('Error loading user profile:', error);
       toast.error('Failed to load user profile');
@@ -331,6 +345,10 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setUserProfile(null);
       toast.success('Signed out successfully!');
+      // Refresh and navigate back to home to clear any stateful listeners/views
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
       return { error: null };
     } catch (error) {
       toast.error('Failed to sign out');

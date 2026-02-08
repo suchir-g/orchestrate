@@ -18,10 +18,15 @@ import './utils/quickFix';
 import Sidebar from './components/Common/Sidebar';
 import Dashboard from './components/Dashboard/Dashboard';
 import EventTracking from './components/EventTracking/EventTracking';
+<<<<<<< HEAD
 import OrderTracking from './components/Logistics/OrderTracking';
 import ShipmentTracking from './components/Logistics/ShipmentTracking';
 import AdminTicketManager from './components/Tickets/AdminTicketManager';
 import PublicTicketClaim from './components/Tickets/PublicTicketClaim';
+=======
+import LogisticsTracker from './components/Logistics/LogisticsTracker';
+import TicketManager from './components/Blockchain/TicketManager';
+>>>>>>> 5060201622684914829841145fe5bf1ea0a45824
 import Analytics from './components/Analytics/Analytics';
 import LoadData from './components/Admin/LoadData';
 import EventTimeline from './components/Timeline/EventTimeline';
@@ -131,10 +136,17 @@ function App() {
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/events" element={<EventTracking />} />
+<<<<<<< HEAD
                     <Route path="/orders" element={<OrderTracking />} />
                     <Route path="/shipments" element={<ShipmentTracking />} />
                     <Route path="/tickets" element={<AdminTicketManager />} />
                     <Route path="/claim-ticket/:eventId" element={<PublicTicketClaim />} />
+=======
+                    <Route path="/orders" element={<LogisticsTracker />} />
+                    <Route path="/shipments" element={<LogisticsTracker />} />
+                    <Route path="/logistics" element={<LogisticsTracker />} />
+                    <Route path="/tickets" element={<TicketManager />} />
+>>>>>>> 5060201622684914829841145fe5bf1ea0a45824
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/timeline" element={<EventTimeline />} />
                     <Route path="/account" element={<AccountPage />} />
