@@ -21,6 +21,8 @@ import {
   ListItemText,
   Alert,
   Tooltip,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -45,7 +47,9 @@ import { getAllScheduleBlocks } from '../../services/scheduleService';
 import EventSharing from '../EventSharing/EventSharing';
 import EnhancedEventCollaboration from '../EventCollaboration/EnhancedEventCollaboration';
 import EventTeam from '../EventTeam/EventTeam';
+
 import EventTeamDisplay from '../EventTeamDisplay/EventTeamDisplay';
+import VolunteerDashboard from '../Volunteers/VolunteerDashboard';
 import { getUserEventRole, canManageCollaborators } from '../../services/accessControlService';
 import { EVENT_ROLES, PERMISSIONS, hasEventPermission } from '../../utils/roleConstants';
 import { format } from 'date-fns';
@@ -62,6 +66,7 @@ const EventDetail = () => {
   const [scheduleBlocks, setLocalScheduleBlocks] = useState([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
+  const [currentTab, setCurrentTab] = useState('overview');
   const [sharingOpen, setSharingOpen] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
   const [collaborationRecipient, setCollaborationRecipient] = useState(null);
@@ -170,9 +175,9 @@ const EventDetail = () => {
     setProcessingStage(true);
 
     try {
-      // TODO: Integrate with blockchain service to record stage completion
-      // For now, we'll just update the event status
-      // await updateEventToBlockchain(eventId, { status: 'completed' });
+      // Blockchain integration for stage completion is currently in development
+      console.info('Simulating blockchain transaction for stage completion');
+      // await blockchainService.recordStageCompletion(eventId, 'completed');
 
       toast.success('Event stage marked as complete! Ready for blockchain confirmation.');
 
@@ -510,255 +515,318 @@ const EventDetail = () => {
         </Box>
       </Box>
 
-      {/* Event Stats */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={3}>
-          <Paper
-            sx={{
-              p: 3,
-              background: 'rgba(0, 212, 255, 0.1)',
-              border: '1px solid rgba(0, 212, 255, 0.3)',
-            }}
-          >
-            <Typography variant="h4" sx={{ fontWeight: 700, color: '#00d4ff' }}>
-              {scheduleBlocks.length}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Total Sessions
-            </Typography>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Paper
-            sx={{
-              p: 3,
-              background: 'rgba(76, 175, 80, 0.1)',
-              border: '1px solid rgba(76, 175, 80, 0.3)',
-            }}
-          >
-            <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
-              {scheduleBlocks.filter(b => b.status === 'completed').length}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Completed
-            </Typography>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Paper
-            sx={{
-              p: 3,
-              background: 'rgba(255, 152, 0, 0.1)',
-              border: '1px solid rgba(255, 152, 0, 0.3)',
-            }}
-          >
-            <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
-              {scheduleBlocks.filter(b => b.status === 'in_progress').length}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              In Progress
-            </Typography>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Paper
-            sx={{
-              p: 3,
-              background: 'rgba(158, 158, 158, 0.1)',
-              border: '1px solid rgba(158, 158, 158, 0.3)',
-            }}
-          >
-            <Typography variant="h4" sx={{ fontWeight: 700, color: '#9e9e9e' }}>
-              {scheduleBlocks.filter(b => b.status === 'scheduled').length}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Scheduled
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Calendar View - Sub-events by Day */}
-      {loading ? (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography>Loading schedule...</Typography>
-        </Paper>
-      ) : scheduleBlocks.length === 0 ? (
-        <Paper
-          sx={{
-            p: 4,
-            textAlign: 'center',
-            background: 'rgba(255, 255, 255, 0.05)',
-            backdropFilter: 'blur(10px)',
-          }}
+      {/* Navigation Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 3 }}>
+        <Tabs
+          value={currentTab}
+          onChange={(e, val) => setCurrentTab(val)}
+          textColor="primary"
+          indicatorColor="primary"
         >
-          <CalendarIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
-            No schedule blocks yet
-          </Typography>
-          <Button
-            variant="contained"
-            onClick={() => navigate(`/schedule/${eventId}`)}
-          >
-            Create Schedule
-          </Button>
-        </Paper>
-      ) : (
-        <Box>
-          {days.map(day => (
-            <Paper
-              key={day}
-              sx={{
-                mb: 3,
-                p: 3,
-                background: 'rgba(255, 255, 255, 0.05)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-              }}
-            >
-              <Typography
-                variant="h5"
+          <Tab label="Overview" value="overview" />
+          <Tab label="Schedule" value="schedule" />
+          <Tab label="Volunteers" value="volunteers" />
+          <Tab label="Team" value="team" />
+        </Tabs>
+      </Box>
+
+
+      {/* OVERVIEW TAB */}
+      {
+        currentTab === 'overview' && (
+          <Box>
+            {/* Event Stats */}
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              <Grid item xs={12} md={3}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    background: 'rgba(0, 212, 255, 0.1)',
+                    border: '1px solid rgba(0, 212, 255, 0.3)',
+                  }}
+                >
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#00d4ff' }}>
+                    {scheduleBlocks.length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Total Sessions
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={3}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    background: 'rgba(76, 175, 80, 0.1)',
+                    border: '1px solid rgba(76, 175, 80, 0.3)',
+                  }}
+                >
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
+                    {scheduleBlocks.filter(b => b.status === 'completed').length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Completed
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={3}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    background: 'rgba(255, 152, 0, 0.1)',
+                    border: '1px solid rgba(255, 152, 0, 0.3)',
+                  }}
+                >
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
+                    {scheduleBlocks.filter(b => b.status === 'in_progress').length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    In Progress
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={3}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    background: 'rgba(158, 158, 158, 0.1)',
+                    border: '1px solid rgba(158, 158, 158, 0.3)',
+                  }}
+                >
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#9e9e9e' }}>
+                    {scheduleBlocks.filter(b => b.status === 'scheduled').length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Scheduled
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={8}>
+                <Typography variant="h5" sx={{ mb: 3 }}>Recent Activity</Typography>
+                <Typography color="text.secondary">No recent activity to display.</Typography>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  👥 Team Preview
+                </Typography>
+                <EventTeamDisplay
+                  event={currentEvent}
+                  onMessageClick={(member) => {
+                    setCollaborationRecipient(member);
+                    setCollaborationOpen(true);
+                  }}
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        )
+      }
+
+      {/* SCHEDULE TAB */}
+      {
+        currentTab === 'schedule' && (
+          <Box>
+            {/* Calendar View - Sub-events by Day */}
+            {loading ? (
+              <Paper sx={{ p: 4, textAlign: 'center' }}>
+                <Typography>Loading schedule...</Typography>
+              </Paper>
+            ) : scheduleBlocks.length === 0 ? (
+              <Paper
                 sx={{
-                  mb: 3,
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
+                  p: 4,
+                  textAlign: 'center',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  backdropFilter: 'blur(10px)',
                 }}
               >
-                <CalendarIcon />
-                Day {day}
-              </Typography>
-
-              <Grid container spacing={2}>
-                {blocksByDay[day].map(block => (
-                  <Grid item xs={12} md={6} lg={4} key={block.id}>
-                    <Card
-                      onClick={() => handleBlockClick(block)}
+                <CalendarIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+                  No schedule blocks yet
+                </Typography>
+                <Button
+                  variant="contained"
+                  onClick={() => navigate(`/schedule/${eventId}`)}
+                >
+                  Create Schedule
+                </Button>
+              </Paper>
+            ) : (
+              <Box>
+                {days.map(day => (
+                  <Paper
+                    key={day}
+                    sx={{
+                      mb: 3,
+                      p: 3,
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      backdropFilter: 'blur(10px)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                    }}
+                  >
+                    <Typography
+                      variant="h5"
                       sx={{
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        backdropFilter: 'blur(10px)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderLeft: `4px solid ${getTypeColor(block.type)}`,
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                          transform: 'translateY(-4px)',
-                          boxShadow: 4,
-                          background: 'rgba(255, 255, 255, 0.08)',
-                        },
+                        mb: 3,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
                       }}
                     >
-                      <CardContent>
-                        {/* Header */}
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                          <Chip
-                            label={block.type}
-                            size="small"
+                      <CalendarIcon />
+                      Day {day}
+                    </Typography>
+
+                    <Grid container spacing={2}>
+                      {blocksByDay[day].map(block => (
+                        <Grid item xs={12} md={6} lg={4} key={block.id}>
+                          <Card
+                            onClick={() => handleBlockClick(block)}
                             sx={{
-                              backgroundColor: getTypeColor(block.type),
-                              color: 'white',
-                            }}
-                          />
-                          <Chip
-                            label={block.status}
-                            color={getStatusColor(block.status)}
-                            size="small"
-                          />
-                        </Box>
-
-                        {/* Title */}
-                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                          {block.title}
-                        </Typography>
-
-                        {/* Details */}
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mb: 2 }}>
-                          <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <ScheduleIcon sx={{ fontSize: 16 }} />
-                            {block.startTime} - {block.endTime}
-                          </Typography>
-                          <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <LocationIcon sx={{ fontSize: 16 }} />
-                            {block.location}
-                          </Typography>
-                          {block.track && (
-                            <Typography variant="body2">
-                              🎯 Track: {block.track}
-                            </Typography>
-                          )}
-                        </Box>
-
-                        {/* Progress Bar */}
-                        <Box sx={{ mb: 1 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              Progress
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {calculateProgress(block).toFixed(0)}%
-                            </Typography>
-                          </Box>
-                          <LinearProgress
-                            variant="determinate"
-                            value={calculateProgress(block)}
-                            sx={{
-                              height: 6,
-                              borderRadius: 3,
-                              backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                              '& .MuiLinearProgress-bar': {
-                                backgroundColor: getTypeColor(block.type),
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              backdropFilter: 'blur(10px)',
+                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                              borderLeft: `4px solid ${getTypeColor(block.type)}`,
+                              cursor: 'pointer',
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                transform: 'translateY(-4px)',
+                                boxShadow: 4,
+                                background: 'rgba(255, 255, 255, 0.08)',
                               },
                             }}
-                          />
-                        </Box>
+                          >
+                            <CardContent>
+                              {/* Header */}
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                                <Chip
+                                  label={block.type}
+                                  size="small"
+                                  sx={{
+                                    backgroundColor: getTypeColor(block.type),
+                                    color: 'white',
+                                  }}
+                                />
+                                <Chip
+                                  label={block.status}
+                                  color={getStatusColor(block.status)}
+                                  size="small"
+                                />
+                              </Box>
 
-                        {/* Capacity */}
-                        {block.capacity && (
-                          <Typography variant="caption" color="text.secondary">
-                            <PeopleIcon sx={{ fontSize: 14, verticalAlign: 'middle', mr: 0.5 }} />
-                            {block.registered || 0} / {block.capacity} registered
-                          </Typography>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
+                              {/* Title */}
+                              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                                {block.title}
+                              </Typography>
+
+                              {/* Details */}
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mb: 2 }}>
+                                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <ScheduleIcon sx={{ fontSize: 16 }} />
+                                  {block.startTime} - {block.endTime}
+                                </Typography>
+                                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <LocationIcon sx={{ fontSize: 16 }} />
+                                  {block.location}
+                                </Typography>
+                                {block.track && (
+                                  <Typography variant="body2">
+                                    🎯 Track: {block.track}
+                                  </Typography>
+                                )}
+                              </Box>
+
+                              {/* Progress Bar */}
+                              <Box sx={{ mb: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Progress
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {calculateProgress(block).toFixed(0)}%
+                                  </Typography>
+                                </Box>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={calculateProgress(block)}
+                                  sx={{
+                                    height: 6,
+                                    borderRadius: 3,
+                                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                    '& .MuiLinearProgress-bar': {
+                                      backgroundColor: getTypeColor(block.type),
+                                    },
+                                  }}
+                                />
+                              </Box>
+
+                              {/* Capacity */}
+                              {block.capacity && (
+                                <Typography variant="caption" color="text.secondary">
+                                  <PeopleIcon sx={{ fontSize: 14, verticalAlign: 'middle', mr: 0.5 }} />
+                                  {block.registered || 0} / {block.capacity} registered
+                                </Typography>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Paper>
                 ))}
-              </Grid>
-            </Paper>
-          ))}
-        </Box>
-      )}
+              </Box>
+            )}
+          </Box>
+        )
+      }
 
-      {/* Event Team Members */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h6" sx={{ mb: 2 }}>
-          👥 Team Structure
-        </Typography>
-        <EventTeamDisplay 
-          event={currentEvent}
-          onMessageClick={(member) => {
-            setCollaborationRecipient(member);
-            setCollaborationOpen(true);
-          }}
-        />
-      </Box>
+      {/* VOLUNTEERS TAB */}
+      {
+        currentTab === 'volunteers' && (
+          <VolunteerDashboard isEmbedded={true} />
+        )
+      }
 
-      {/* Detailed Event Team Members */}
-      <Box sx={{ mb: 4 }}>
-        <EventTeam
-          event={currentEvent}
-          userEventRole={userEventRole}
-          onMessageUser={(member, role) => {
-              // Open collaboration dialog with pre-selected recipient
-              setCollaborationRecipient(member);
-              setCollaborationOpen(true);
-          }}
-        />
-      </Box>
+      {/* TEAM TAB */}
+      {
+        currentTab === 'team' && (
+          <Box>
+            {/* Event Team Members */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                👥 Team Structure
+              </Typography>
+              <EventTeamDisplay
+                event={currentEvent}
+                onMessageClick={(member) => {
+                  setCollaborationRecipient(member);
+                  setCollaborationOpen(true);
+                }}
+              />
+            </Box>
+
+            {/* Detailed Event Team Members */}
+            <Box sx={{ mb: 4 }}>
+              <EventTeam
+                event={currentEvent}
+                userEventRole={userEventRole}
+                onMessageUser={(member, role) => {
+                  // Open collaboration dialog with pre-selected recipient
+                  setCollaborationRecipient(member);
+                  setCollaborationOpen(true);
+                }}
+              />
+            </Box>
+          </Box>
+        )
+      }
 
       {/* Detail Dialog */}
       <Dialog
@@ -1103,7 +1171,7 @@ const EventDetail = () => {
         event={currentEvent}
         initialRecipient={collaborationRecipient}
       />
-    </Container>
+    </Container >
   );
 };
 

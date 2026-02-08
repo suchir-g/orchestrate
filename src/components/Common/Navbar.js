@@ -80,8 +80,7 @@ const Navbar = () => {
     { path: '/tickets', label: 'Blockchain Tickets', icon: <TokenIcon /> },
     { path: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> },
     { path: '/predictions', label: 'Predictions', icon: <AnalyticsIcon /> },
-    // TODO: Make this conditional based on selected hackathon event
-    // For now, this will navigate to schedule builder (needs eventId as URL parameter)
+    { path: '/predictions', label: 'Predictions', icon: <AnalyticsIcon /> },
   ];
 
   const handleWalletClick = () => {

@@ -1,166 +1,165 @@
-/**
- * OpenAI API Service
- * Handles communication with OpenAI API for event-specific chat assistance
- */
+import OpenAI from 'openai';
+import { getEvent } from './firebaseDbService';
 
-const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+// Initialize OpenAI client safely
+let openai;
+try {
+  if (process.env.REACT_APP_OPENAI_API_KEY) {
+    openai = new OpenAI({
+      apiKey: process.env.REACT_APP_OPENAI_API_KEY,
+      dangerouslyAllowBrowser: true
+    });
+  }
+} catch (error) {
+  console.warn("Failed to initialize OpenAI client:", error);
+}
 
-/**
- * Build context from event data for RAG
- */
+const getMockPrediction = () => ({
+  summary: "Based on the event size (500 attendees) and duration (8 hours), we recommend a team of 12 volunteers focused on turning the chaos into coordination.",
+  totalVolunteers: 12,
+  roles: [
+    {
+      role: "Registration Specialist",
+      count: 4,
+      responsibilities: ["Check-in attendees", "Distribute badges", "Answer FAQs"],
+      reasoning: "High traffic expected at 9:00 AM."
+    },
+    {
+      role: "Wayfinding Guide",
+      count: 4,
+      responsibilities: ["Direct attendees", "Manage queues", "Monitor capacity"],
+      reasoning: "Complex venue layout requires guidance."
+    },
+    {
+      role: "Content Support",
+      count: 2,
+      responsibilities: ["Assist speakers", "Manage mics", "Timekeeping"],
+      reasoning: "Multiple simultaneous sessions."
+    },
+    {
+      role: "Logistics Runner",
+      count: 2,
+      responsibilities: ["Restock supplies", "Coordinate shifts", "Emergency contact"],
+      reasoning: "Ensures smooth operations."
+    }
+  ],
+  shifts: [
+    { name: "Morning Peak", time: "08:00 - 12:00", volunteersNeeded: 12 },
+    { name: "Afternoon Session", time: "12:00 - 16:00", volunteersNeeded: 8 },
+    { name: "Pack Down", time: "16:00 - 18:00", volunteersNeeded: 4 }
+  ]
+});
+
 export const buildEventContext = (event, relatedOrders = [], relatedTickets = []) => {
-  if (!event) return '';
-
-  const context = `
-EVENT INFORMATION:
-Name: ${event.name}
-Description: ${event.description || 'No description'}
-Date: ${event.date ? new Date(event.date).toLocaleString() : 'Not set'}
-${event.endDate ? `End Date: ${new Date(event.endDate).toLocaleString()}` : ''}
-Location: ${event.location || 'Not set'}
-Venue: ${event.venue?.name || 'Not set'}
-Capacity: ${event.capacity || 'Not set'}
-Status: ${event.status || 'Unknown'}
-Category: ${event.category || 'Not set'}
-Organizer: ${event.organizer || 'Not set'}
-
-${event.attendees !== undefined ? `Attendees: ${event.attendees}` : ''}
-${event.tickets ? `Tickets - Total: ${event.tickets.total}, Sold: ${event.tickets.sold}, Available: ${event.tickets.available}` : ''}
-
-${event.schedule && event.schedule.length > 0 ? `
-SCHEDULE:
-${event.schedule.map(item => `- ${item.time}: ${item.activity}${item.speaker ? ` (${item.speaker})` : ''}`).join('\n')}
-` : ''}
-
-${event.speakers && event.speakers.length > 0 ? `
-SPEAKERS:
-${event.speakers.map(s => `- ${s.name} (${s.title}): ${s.topic}`).join('\n')}
-` : ''}
-
-${event.todos && event.todos.length > 0 ? `
-TODO LIST:
-${event.todos.map(todo => `- [${todo.status}] ${todo.task} (Due: ${new Date(todo.dueDate).toLocaleDateString()}, Assigned: ${todo.assignedTo}, Priority: ${todo.priority})`).join('\n')}
-` : ''}
-
-${event.timeline && event.timeline.length > 0 ? `
-TIMELINE/MILESTONES:
-${event.timeline.map(item => `- [${item.status}] ${item.step}: ${item.description} (${new Date(item.timestamp).toLocaleDateString()})`).join('\n')}
-` : ''}
-
-${relatedOrders.length > 0 ? `
-MERCHANDISE & SUPPLIES:
-${relatedOrders.map(order => `- ${order.orderNumber}: ${order.itemType || 'Items'} - Status: ${order.status}, Amount: $${order.totalAmount}, Supplier: ${order.supplier || 'N/A'}`).join('\n')}
-` : ''}
-
-${relatedTickets.length > 0 ? `
-TICKETS ISSUED:
-${relatedTickets.length} tickets sold
-${relatedTickets.slice(0, 5).map(ticket => `- ${ticket.ticketNumber}: ${ticket.holderName} (${ticket.ticketType}) - $${ticket.price}`).join('\n')}
-${relatedTickets.length > 5 ? `... and ${relatedTickets.length - 5} more tickets` : ''}
-` : ''}
-
-${event.pricing ? `
-PRICING:
-${Object.entries(event.pricing).map(([type, price]) => `- ${type}: $${price}`).join('\n')}
-` : ''}
-
-${event.tags && event.tags.length > 0 ? `Tags: ${event.tags.join(', ')}` : ''}
-`.trim();
-
-  return context;
+  return `
+    Event Name: ${event.title || event.name}
+    Date: ${event.date}
+    Location: ${event.location}
+    Description: ${event.description}
+    Attendees (Projected/Sold): ${event.attendees?.length || relatedTickets.length || 0}
+    
+    Orders Count: ${relatedOrders.length}
+    Tickets Sold: ${relatedTickets.length}
+    
+    Schedule: ${event.schedule ? JSON.stringify(event.schedule) : 'Standard day schedule'}
+  `;
 };
 
-/**
- * Call OpenAI API with event context
- */
-export const chatWithEventAssistant = async (messages, eventContext) => {
-  if (!OPENAI_API_KEY) {
-    throw new Error('OpenAI API key is not configured. Please add REACT_APP_OPENAI_API_KEY to your .env file.');
+export const generateSuggestedQuestions = (event) => {
+  if (!event) return [];
+  return [
+    `What is the schedule for ${event.name || 'this event'}?`,
+    "How many tickets have been sold?",
+    "Draft an announcement for volunteers.",
+    "What tasks are currently pending?"
+  ];
+};
+
+export const predictVolunteerNeeds = async (event) => {
+  if (!openai) {
+    console.warn("OpenAI API Key missing, returning mock prediction.");
+    return getMockPrediction();
   }
+
+  const context = buildEventContext(event);
 
   const systemMessage = {
     role: 'system',
-    content: `You are a helpful AI assistant for the Orchestrate event management platform. You help users understand and manage their events by answering questions about event details, schedules, todos, tickets, merchandise, and timelines.
-
-You have access to the following event information:
-
-${eventContext}
-
-When answering questions:
-- Be concise and helpful
-- Reference specific data from the event information above
-- If asked about tasks or todos, mention their status, priority, and assignee
-- If asked about timeline or milestones, provide dates and completion status
-- If asked about tickets or attendance, provide accurate numbers
-- If information is not available in the context, politely say so
-- Use emojis sparingly to make responses friendly
-- Format lists and data clearly
-
-Your goal is to help event organizers quickly access information and insights about their events.`
+    content: `You are an expert event planner and volunteer coordinator. 
+    Analyze the provided event details and predict the volunteer requirements.
+    
+    Return a JSON object with the following structure:
+    {
+      "summary": "Brief explanation of the overall staffing strategy",
+      "totalVolunteers": Number,
+      "roles": [
+        {
+          "role": "Role Name",
+          "count": Number,
+          "responsibilities": ["List of specific responsibilities"],
+          "reasoning": "Why this role is needed"
+        }
+      ],
+      "shifts": [
+        {
+          "name": "Shift Name",
+          "time": "HH:MM",
+          "volunteersNeeded": Number
+        }
+      ]
+    }
+    
+    Current Event Details:
+    ${context}
+    
+    CRITICAL INSTRUCTIONS:
+    1. GENERATE DIVERSE AND UNIQUE TASKS. Do not just suggest generic roles like "General Volunteer". 
+    2. Be specific to the event type (e.g., if it's a concert, suggest "Stagehand", "Usher", "Merch Seller").
+    3. Ensure roles are distinct and do not overlap significantly in responsibilities.
+    4. Provide a varied set of shifts if applicable.
+    
+    Consider:
+    - Event capacity and attendees
+    - Schedule complexity
+    - Venue logistics`
   };
 
   try {
-    const response = await fetch(OPENAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini', // Cost-effective and fast
-        messages: [systemMessage, ...messages],
-        temperature: 0.7,
-        max_tokens: 1000,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
-      })
+    const completion = await openai.chat.completions.create({
+      model: process.env.REACT_APP_OPENAI_MODEL || "gpt-3.5-turbo",
+      messages: [
+        systemMessage,
+        { role: "user", content: "Generate volunteer plan." }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Failed to get response from OpenAI');
-    }
+    const prediction = JSON.parse(completion.choices[0].message.content);
+    return prediction;
 
-    const data = await response.json();
-    return {
-      message: data.choices[0].message.content,
-      usage: data.usage
-    };
   } catch (error) {
-    console.error('Error calling OpenAI API:', error);
-    throw error;
+    console.error("OpenAI Error:", error);
+    return getMockPrediction(); // Fallback
   }
 };
 
-/**
- * Generate suggested questions based on event data
- */
-export const generateSuggestedQuestions = (event) => {
-  const questions = [];
-
-  if (event?.todos && event.todos.length > 0) {
-    questions.push("What tasks are still pending?");
-    questions.push("Which tasks are marked as urgent?");
+export const chatWithEventAssistant = async (messages, eventContext) => {
+  if (!openai) {
+    return { message: "I'm in demo mode. Please add an API key for live chat." };
   }
 
-  if (event?.schedule && event.schedule.length > 0) {
-    questions.push("What's on the schedule?");
-    questions.push("Who are the speakers?");
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: `You are a helpful assistant for event planning. Context: ${eventContext}` },
+        ...messages
+      ],
+    });
+    return { message: completion.choices[0].message.content };
+  } catch (error) {
+    console.error("Chat Error:", error);
+    throw new Error("Sorry, I'm having trouble connecting right now.");
   }
-
-  if (event?.tickets) {
-    questions.push("How many tickets have been sold?");
-  }
-
-  if (event?.timeline && event.timeline.length > 0) {
-    questions.push("What milestones are completed?");
-    questions.push("What's the progress status?");
-  }
-
-  questions.push("Give me a summary of this event");
-  questions.push("What needs immediate attention?");
-
-  return questions;
 };

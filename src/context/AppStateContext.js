@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useMemo } from 'react';
 import {
   listenToUserEvents,
   listenToUserOrders,
@@ -57,7 +57,8 @@ const initialState = {
     scheduleBlocks: false,
     volunteers: false,
     volunteerTasks: false,
-  }
+  },
+  selectedEventId: null,
 };
 
 // Action types
@@ -89,6 +90,7 @@ const ActionTypes = {
   DELETE_VOLUNTEER_TASK: 'DELETE_VOLUNTEER_TASK',
   SET_VOLUNTEER_PREDICTIONS: 'SET_VOLUNTEER_PREDICTIONS',
   SET_VOLUNTEER_STATS: 'SET_VOLUNTEER_STATS',
+  SET_SELECTED_EVENT_ID: 'SET_SELECTED_EVENT_ID',
 };
 
 // Reducer
@@ -191,6 +193,8 @@ const appReducer = (state, action) => {
     case ActionTypes.SET_VOLUNTEER_STATS:
       return { ...state, volunteerStats: { ...state.volunteerStats, ...action.payload } };
 
+    case ActionTypes.SET_SELECTED_EVENT_ID:
+      return { ...state, selectedEventId: action.payload };
     default:
       return state;
   }
@@ -201,7 +205,7 @@ export const AppStateProvider = ({ children }) => {
   const { user, userRole } = useAuth();
 
   // Action creators
-  const actions = {
+  const actions = useMemo(() => ({
     setEvents: (events) => dispatch({ type: ActionTypes.SET_EVENTS, payload: events }),
     addEvent: async (event) => {
       // Write to Firestore with RBAC fields - listeners will update local state
@@ -266,7 +270,8 @@ export const AppStateProvider = ({ children }) => {
     deleteVolunteerTask: (taskId) => dispatch({ type: ActionTypes.DELETE_VOLUNTEER_TASK, payload: taskId }),
     setVolunteerPredictions: (predictions) => dispatch({ type: ActionTypes.SET_VOLUNTEER_PREDICTIONS, payload: predictions }),
     setVolunteerStats: (stats) => dispatch({ type: ActionTypes.SET_VOLUNTEER_STATS, payload: stats }),
-  };
+    setSelectedEventId: (eventId) => dispatch({ type: ActionTypes.SET_SELECTED_EVENT_ID, payload: eventId }),
+  }), [user]);
 
   // Listen to Firebase real-time updates
   useEffect(() => {
@@ -349,6 +354,35 @@ export const AppStateProvider = ({ children }) => {
       // unsubscribeVolunteerTasks();
     };
   }, [user, userRole]); // Re-run when user changes (login/logout) or role changes
+
+  // Listener for selected event data (Sub-collections)
+  useEffect(() => {
+    if (!user || !state.selectedEventId) return;
+
+    console.log('🔄 Setting up event listeners for:', state.selectedEventId);
+
+    const unsubscribeScheduleBlocks = listenToScheduleBlocks(state.selectedEventId, (blocks) => {
+      // console.log('📅 Schedule blocks updated:', blocks.length);
+      dispatch({ type: ActionTypes.SET_SCHEDULE_BLOCKS, payload: blocks });
+    });
+
+    const unsubscribeVolunteers = listenToVolunteers(state.selectedEventId, (volunteers) => {
+      // console.log('👥 Volunteers updated:', volunteers.length);
+      dispatch({ type: ActionTypes.SET_VOLUNTEERS, payload: volunteers });
+    });
+
+    const unsubscribeVolunteerTasks = listenToVolunteerTasks(state.selectedEventId, (tasks) => {
+      // console.log('📋 Volunteer tasks updated:', tasks.length);
+      dispatch({ type: ActionTypes.SET_VOLUNTEER_TASKS, payload: tasks });
+    });
+
+    return () => {
+      console.log('Cleaning up event listeners');
+      unsubscribeScheduleBlocks();
+      unsubscribeVolunteers();
+      unsubscribeVolunteerTasks();
+    };
+  }, [user, state.selectedEventId]);
 
   const value = {
     ...state,

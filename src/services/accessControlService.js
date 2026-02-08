@@ -209,6 +209,15 @@ export const addEventCollaborator = async (eventId, userId, role, permissions = 
   try {
     const eventRef = doc(db, COLLECTIONS.EVENTS, eventId);
 
+    const eventDoc = await getDoc(eventRef);
+    if (eventDoc.exists()) {
+      const existingCollaborators = eventDoc.data().collaborators || [];
+      if (existingCollaborators.some(c => c.userId === userId)) {
+        console.warn(`User ${userId} is already a collaborator on event ${eventId}`);
+        return { error: 'User is already a collaborator' };
+      }
+    }
+
     const collaborator = {
       userId,
       role,
@@ -361,7 +370,7 @@ export const getEventTeams = async (eventId, userId = null) => {
 
     const eventData = eventDoc.data();
     const collaborators = eventData.collaborators || [];
-    
+
     // Helper function to get user display name
     const getUserDisplayName = async (uid) => {
       try {
@@ -376,10 +385,10 @@ export const getEventTeams = async (eventId, userId = null) => {
         return uid;
       }
     };
-    
+
     // Organizers: event creator + collaborators with organizer role
     const organizers = [];
-    
+
     // Add event creator as organizer
     if (eventData.createdBy) {
       const creatorName = await getUserDisplayName(eventData.createdBy);
@@ -390,7 +399,7 @@ export const getEventTeams = async (eventId, userId = null) => {
         isCreator: true,
       });
     }
-    
+
     // Add collaborators with organizer role
     for (const collab of collaborators) {
       if (collab.role === EVENT_ROLES.ORGANIZER && collab.userId !== eventData.createdBy) {

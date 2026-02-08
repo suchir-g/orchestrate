@@ -117,9 +117,28 @@ export const updateTimeSlot = async (taskId, timeSlotId, updates) => {
       return { error: 'Task not found' };
     }
 
-    const updatedTimeSlots = (task.timeSlots || []).map(slot =>
-      slot.id === timeSlotId ? { ...slot, ...updates } : slot
-    );
+    const updatedTimeSlots = (task.timeSlots || []).map(slot => {
+      if (slot.id === timeSlotId) {
+        const updatedSlot = { ...slot, ...updates };
+
+        // Recalculate status if relevant fields changed
+        if (updates.requiredVolunteers !== undefined || updates.assignedVolunteers !== undefined) {
+          const assignedCount = (updatedSlot.assignedVolunteers || []).length;
+          const required = updatedSlot.requiredVolunteers;
+
+          if (assignedCount >= required) {
+            updatedSlot.status = 'filled';
+          } else if (assignedCount > 0) {
+            updatedSlot.status = 'partially_filled';
+          } else {
+            updatedSlot.status = 'open';
+          }
+        }
+
+        return updatedSlot;
+      }
+      return slot;
+    });
 
     await updateVolunteerTask(taskId, {
       timeSlots: updatedTimeSlots
