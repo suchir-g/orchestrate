@@ -20,7 +20,8 @@ import Dashboard from './components/Dashboard/Dashboard';
 import EventTracking from './components/EventTracking/EventTracking';
 import OrderTracking from './components/Logistics/OrderTracking';
 import ShipmentTracking from './components/Logistics/ShipmentTracking';
-import TicketManager from './components/Blockchain/TicketManager';
+import AdminTicketManager from './components/Tickets/AdminTicketManager';
+import PublicTicketClaim from './components/Tickets/PublicTicketClaim';
 import Analytics from './components/Analytics/Analytics';
 import LoadData from './components/Admin/LoadData';
 import EventTimeline from './components/Timeline/EventTimeline';
@@ -132,7 +133,8 @@ function App() {
                     <Route path="/events" element={<EventTracking />} />
                     <Route path="/orders" element={<OrderTracking />} />
                     <Route path="/shipments" element={<ShipmentTracking />} />
-                    <Route path="/tickets" element={<TicketManager />} />
+                    <Route path="/tickets" element={<AdminTicketManager />} />
+                    <Route path="/claim-ticket/:eventId" element={<PublicTicketClaim />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/timeline" element={<EventTimeline />} />
                     <Route path="/account" element={<AccountPage />} />

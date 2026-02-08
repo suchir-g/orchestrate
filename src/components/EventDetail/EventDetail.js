@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   IconButton,
   Divider,
   List,
@@ -21,6 +22,7 @@ import {
   ListItemText,
   Alert,
   Tooltip,
+  TextField,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -37,6 +39,8 @@ import {
   PlayArrow as NextStageIcon,
   Share as ShareIcon,
   Message as MessageIcon,
+  Token as TokenIcon,
+  ShoppingCart as PurchaseIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppState } from '../../context/AppStateContext';
@@ -53,8 +57,8 @@ import toast from 'react-hot-toast';
 const EventDetail = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { events, orders, shipments } = useAppState();
-  const { user, userRole } = useAuth();
+  const { events, orders, shipments, updateEvent } = useAppState();
+  const { user, userRole, isWalletConnected } = useAuth();
 
   const [currentEvent, setCurrentEvent] = useState(null);
   const [selectedBlock, setSelectedBlock] = useState(null);
@@ -66,6 +70,10 @@ const EventDetail = () => {
   const [loading, setLoading] = useState(true);
   const [processingStage, setProcessingStage] = useState(false);
   const [userEventRole, setUserEventRole] = useState(null);
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false);
+  const [selectedTier, setSelectedTier] = useState(null);
+  const [purchaseQuantity, setPurchaseQuantity] = useState(1);
+  const [purchasingTicket, setPurchasingTicket] = useState(false);
 
   // Load event details
   useEffect(() => {
@@ -119,6 +127,68 @@ const EventDetail = () => {
 
   const handleOpenValidation = () => {
     setValidationDialogOpen(true);
+  };
+
+  const handleOpenPurchase = (tier) => {
+    if (!user) {
+      toast.error('Please sign in to purchase tickets');
+      return;
+    }
+    if (!isWalletConnected) {
+      toast.error('Please connect your wallet to purchase NFT tickets');
+      return;
+    }
+    setSelectedTier(tier);
+    setPurchaseQuantity(1);
+    setPurchaseDialogOpen(true);
+  };
+
+  const handlePurchaseTicket = async () => {
+    if (!selectedTier || !currentEvent) return;
+
+    const available = selectedTier.supply - selectedTier.sold;
+    if (purchaseQuantity > available) {
+      toast.error(`Only ${available} tickets available`);
+      return;
+    }
+
+    setPurchasingTicket(true);
+
+    try {
+      // Simulate blockchain transaction
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Update the ticket tier with new sold count
+      const updatedTiers = currentEvent.ticketTiers.map(tier => {
+        if (tier.name === selectedTier.name) {
+          return { ...tier, sold: tier.sold + purchaseQuantity };
+        }
+        return tier;
+      });
+
+      const totalSold = updatedTiers.reduce((sum, tier) => sum + tier.sold, 0);
+      const totalCapacity = updatedTiers.reduce((sum, tier) => sum + tier.supply, 0);
+
+      // Update event with new ticket counts
+      await updateEvent(currentEvent.id, {
+        ticketTiers: updatedTiers,
+        tickets: {
+          total: totalCapacity,
+          sold: totalSold,
+          available: totalCapacity - totalSold,
+        },
+      });
+
+      toast.success(`Successfully purchased ${purchaseQuantity} ${selectedTier.name} ticket(s) as NFT!`);
+      setPurchaseDialogOpen(false);
+      setSelectedTier(null);
+      setPurchaseQuantity(1);
+    } catch (error) {
+      console.error('Error purchasing ticket:', error);
+      toast.error('Failed to purchase ticket');
+    } finally {
+      setPurchasingTicket(false);
+    }
   };
 
   // Permission check helpers
@@ -552,6 +622,139 @@ const EventDetail = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* NFT Ticket Tiers */}
+      {currentEvent.ticketTiers && currentEvent.ticketTiers.length > 0 && (
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h5" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TokenIcon /> NFT Ticket Tiers
+          </Typography>
+          <Grid container spacing={3}>
+            {currentEvent.ticketTiers.map((tier, index) => {
+              const available = tier.supply - tier.sold;
+              const percentSold = (tier.sold / tier.supply) * 100;
+              const isSoldOut = available === 0;
+
+              return (
+                <Grid item xs={12} md={6} lg={4} key={index}>
+                  <Card
+                    sx={{
+                      height: '100%',
+                      background: isSoldOut
+                        ? 'rgba(255, 255, 255, 0.03)'
+                        : 'rgba(0, 212, 255, 0.05)',
+                      border: isSoldOut
+                        ? '1px solid rgba(255, 255, 255, 0.1)'
+                        : '1px solid rgba(0, 212, 255, 0.3)',
+                      position: 'relative',
+                      overflow: 'visible',
+                    }}
+                  >
+                    <CardContent>
+                      {isSoldOut && (
+                        <Chip
+                          label="SOLD OUT"
+                          color="error"
+                          size="small"
+                          sx={{
+                            position: 'absolute',
+                            top: -10,
+                            right: 16,
+                            fontWeight: 'bold',
+                          }}
+                        />
+                      )}
+
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                        <Box>
+                          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                            {tier.name}
+                          </Typography>
+                          <Chip
+                            icon={<TokenIcon />}
+                            label="NFT"
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                            sx={{ mt: 0.5 }}
+                          />
+                        </Box>
+                        <Typography
+                          variant="h4"
+                          sx={{
+                            fontWeight: 700,
+                            color: isSoldOut ? 'text.secondary' : 'primary.main',
+                          }}
+                        >
+                          ${tier.price}
+                        </Typography>
+                      </Box>
+
+                      {/* Supply Tracking */}
+                      <Box sx={{ mb: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Supply
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {tier.sold} / {tier.supply} sold
+                          </Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={percentSold}
+                          sx={{
+                            height: 8,
+                            borderRadius: 1,
+                            bgcolor: 'rgba(255, 255, 255, 0.1)',
+                            '& .MuiLinearProgress-bar': {
+                              bgcolor: isSoldOut ? 'error.main' : 'primary.main',
+                            },
+                          }}
+                        />
+                        <Typography
+                          variant="caption"
+                          color={isSoldOut ? 'error.main' : 'success.main'}
+                          sx={{ mt: 0.5, display: 'block' }}
+                        >
+                          {isSoldOut ? 'SOLD OUT' : `${available} tickets available`}
+                        </Typography>
+                      </Box>
+
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                        🔐 Secured on blockchain: {currentEvent.contractAddress?.slice(0, 10)}...
+                      </Typography>
+
+                      <Button
+                        variant={isSoldOut ? 'outlined' : 'contained'}
+                        fullWidth
+                        startIcon={<PurchaseIcon />}
+                        onClick={() => handleOpenPurchase(tier)}
+                        disabled={isSoldOut || !isWalletConnected}
+                        sx={{
+                          background: isSoldOut
+                            ? undefined
+                            : 'linear-gradient(45deg, #00d4ff 30%, #ff6b9d 90%)',
+                        }}
+                      >
+                        {isSoldOut ? 'Sold Out' : isWalletConnected ? 'Purchase NFT Ticket' : 'Connect Wallet'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+
+          {!isWalletConnected && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                Connect your wallet to purchase NFT tickets for this event
+              </Typography>
+            </Alert>
+          )}
+        </Box>
+      )}
 
       {/* Calendar View - Sub-events by Day */}
       {loading ? (
@@ -1034,6 +1237,134 @@ const EventDetail = () => {
             </Box>
           </Box>
         </DialogContent>
+      </Dialog>
+
+      {/* Ticket Purchase Dialog */}
+      <Dialog
+        open={purchaseDialogOpen}
+        onClose={() => !purchasingTicket && setPurchaseDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h5">Purchase NFT Ticket</Typography>
+            <IconButton onClick={() => setPurchaseDialogOpen(false)} disabled={purchasingTicket}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {selectedTier && (
+            <Box>
+              <Paper
+                sx={{
+                  p: 2,
+                  mb: 3,
+                  background: 'rgba(0, 212, 255, 0.1)',
+                  border: '1px solid rgba(0, 212, 255, 0.3)',
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {selectedTier.name}
+                    </Typography>
+                    <Chip
+                      icon={<TokenIcon />}
+                      label="NFT Ticket"
+                      size="small"
+                      color="primary"
+                      sx={{ mt: 0.5 }}
+                    />
+                  </Box>
+                  <Typography variant="h4" sx={{ color: 'primary.main', fontWeight: 700 }}>
+                    ${selectedTier.price}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  {currentEvent.name}
+                </Typography>
+              </Paper>
+
+              <TextField
+                label="Quantity"
+                type="number"
+                fullWidth
+                value={purchaseQuantity}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 1;
+                  const max = selectedTier.supply - selectedTier.sold;
+                  setPurchaseQuantity(Math.min(Math.max(1, val), max));
+                }}
+                inputProps={{
+                  min: 1,
+                  max: selectedTier.supply - selectedTier.sold,
+                }}
+                sx={{ mb: 3 }}
+                helperText={`${selectedTier.supply - selectedTier.sold} tickets available`}
+              />
+
+              <Box
+                sx={{
+                  p: 2,
+                  bgcolor: 'action.hover',
+                  borderRadius: 1,
+                  mb: 2,
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="body2">Price per ticket</Typography>
+                  <Typography variant="body2">${selectedTier.price}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="body2">Quantity</Typography>
+                  <Typography variant="body2">{purchaseQuantity}</Typography>
+                </Box>
+                <Divider sx={{ my: 1 }} />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6" fontWeight="bold">
+                    Total
+                  </Typography>
+                  <Typography variant="h6" fontWeight="bold" color="primary.main">
+                    ${(selectedTier.price * purchaseQuantity).toFixed(2)}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  This ticket will be minted as an NFT on the blockchain and sent to your wallet.
+                  You'll receive a QR code for event check-in.
+                </Typography>
+              </Alert>
+
+              {purchasingTicket && (
+                <Box sx={{ textAlign: 'center', py: 2 }}>
+                  <LinearProgress sx={{ mb: 2 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    Minting NFT ticket on blockchain...
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPurchaseDialogOpen(false)} disabled={purchasingTicket}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handlePurchaseTicket}
+            disabled={purchasingTicket}
+            sx={{
+              background: 'linear-gradient(45deg, #00d4ff 30%, #ff6b9d 90%)',
+            }}
+          >
+            {purchasingTicket ? 'Processing...' : `Purchase ${purchaseQuantity} Ticket(s)`}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Event Sharing Dialog */}

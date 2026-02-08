@@ -283,6 +283,71 @@ export const createUserProfile = (userId, userData) => {
 export const getUserProfile = (userId) => getDocument(COLLECTIONS.USERS, userId);
 export const updateUserProfile = (userId, data) => updateDocument(COLLECTIONS.USERS, userId, data);
 
+// ========== TICKET CLAIMING ==========
+
+// Claim a ticket for an event
+export const claimTicket = async (eventId, tierIndex, claimerData) => {
+  try {
+    const eventRef = doc(db, COLLECTIONS.EVENTS, eventId);
+    const eventSnap = await getDoc(eventRef);
+
+    if (!eventSnap.exists()) {
+      return { success: false, error: 'Event not found' };
+    }
+
+    const eventData = eventSnap.data();
+    const ticketTiers = eventData.ticketTiers || [];
+
+    if (tierIndex < 0 || tierIndex >= ticketTiers.length) {
+      return { success: false, error: 'Invalid ticket tier' };
+    }
+
+    const tier = ticketTiers[tierIndex];
+    const available = (tier.supply || 0) - (tier.sold || 0);
+
+    if (available <= 0) {
+      return { success: false, error: 'Ticket tier sold out' };
+    }
+
+    // Create claimed ticket record
+    const claimRecord = {
+      eventId,
+      eventName: eventData.name,
+      tierIndex,
+      tierName: tier.name,
+      holderName: claimerData.name,
+      holderEmail: claimerData.email,
+      price: tier.price || 0,
+      claimedAt: serverTimestamp(),
+      status: 'confirmed'
+    };
+
+    // Save to tickets collection
+    const ticketRef = await addDoc(collection(db, COLLECTIONS.TICKETS), claimRecord);
+
+    // Update event ticket tier sold count
+    const updatedTiers = [...ticketTiers];
+    updatedTiers[tierIndex] = {
+      ...tier,
+      sold: (tier.sold || 0) + 1
+    };
+
+    await updateDoc(eventRef, {
+      ticketTiers: updatedTiers,
+      updatedAt: serverTimestamp()
+    });
+
+    return {
+      success: true,
+      ticketId: ticketRef.id,
+      ticket: { id: ticketRef.id, ...claimRecord }
+    };
+  } catch (error) {
+    console.error('Error claiming ticket:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Export all for convenience
 export {
   serverTimestamp,

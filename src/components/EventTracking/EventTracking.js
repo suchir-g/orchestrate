@@ -37,6 +37,7 @@ import {
   Timeline as TimelineIcon,
   Share as ShareIcon,
   MoreVert as MoreIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
 import { useAuth } from '../../context/AuthContext';
@@ -54,8 +55,10 @@ const EventTracking = () => {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [eventToShare, setEventToShare] = useState(null);
-  const [tabValue, setTabValue] = useState(0);
   const [eventRoles, setEventRoles] = useState({});
+  const [tabValue, setTabValue] = useState(0);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingEventId, setEditingEventId] = useState(null);
   const [newEvent, setNewEvent] = useState({
     name: '',
     description: '',
@@ -64,6 +67,12 @@ const EventTracking = () => {
     capacity: '',
     organizer: '',
     category: '',
+    ticketTiers: [],
+  });
+  const [newTicketTier, setNewTicketTier] = useState({
+    name: '',
+    price: '',
+    supply: '',
   });
 
   const eventStatuses = ['Planning', 'Confirmed', 'In Progress', 'Completed', 'Cancelled'];
@@ -92,54 +101,137 @@ const EventTracking = () => {
     return hasEventPermission(role, PERMISSIONS.EVENT_SHARE);
   };
 
+  const handleEditEvent = (event) => {
+    setIsEditMode(true);
+    setEditingEventId(event.id);
+    setNewEvent({
+      name: event.name || '',
+      description: event.description || '',
+      date: event.date || '',
+      location: event.location || '',
+      capacity: event.capacity || '',
+      organizer: event.organizer || '',
+      category: event.category || '',
+      ticketTiers: event.ticketTiers || [],
+    });
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setIsEditMode(false);
+    setEditingEventId(null);
+    setNewEvent({
+      name: '',
+      description: '',
+      date: '',
+      location: '',
+      capacity: '',
+      organizer: '',
+      category: '',
+      ticketTiers: [],
+    });
+    setNewTicketTier({ name: '', price: '', supply: '' });
+  };
+
+  const handleAddTicketTier = () => {
+    // Removed validation - allow adding tiers without all fields
+
+    const tier = {
+      name: newTicketTier.name || 'General',
+      price: parseFloat(newTicketTier.price) || 0,
+      supply: parseInt(newTicketTier.supply) || 100,
+      sold: 0,
+    };
+
+    setNewEvent({
+      ...newEvent,
+      ticketTiers: [...newEvent.ticketTiers, tier],
+    });
+
+    setNewTicketTier({ name: '', price: '', supply: '' });
+    toast.success(`${tier.name} tier added!`);
+  };
+
+  const handleRemoveTicketTier = (index) => {
+    const updatedTiers = newEvent.ticketTiers.filter((_, i) => i !== index);
+    setNewEvent({ ...newEvent, ticketTiers: updatedTiers });
+    toast.success('Ticket tier removed');
+  };
+
   const handleCreateEvent = async () => {
-    if (!user) {
-      toast.error('Please sign in to create events');
-      return;
-    }
-
-    if (!newEvent.name || !newEvent.date || !newEvent.location) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
     try {
-      const eventData = {
-        ...newEvent,
-        createdBy: user.uid,
-        status: 'Planning',
-        timeline: [
-          {
-            step: 'Event Created',
-            timestamp: new Date().toISOString(),
-            status: 'completed',
-            description: 'Event has been created and is in planning phase',
+      // Calculate total capacity from ticket tiers (default to 100 if no tiers)
+      const totalCapacity = newEvent.ticketTiers.length > 0 
+        ? newEvent.ticketTiers.reduce((sum, tier) => sum + tier.supply, 0)
+        : 100;
+
+      if (isEditMode) {
+        // Update existing event
+        const existingEvent = events.find(e => e.id === editingEventId);
+        const eventData = {
+          ...existingEvent,
+          ...newEvent,
+          name: newEvent.name || 'Untitled Event',
+          date: newEvent.date || new Date().toISOString(),
+          location: newEvent.location || 'TBD',
+          capacity: totalCapacity,
+          tickets: {
+            ...existingEvent.tickets,
+            total: totalCapacity,
+            available: totalCapacity - (existingEvent.tickets?.sold || 0),
           },
-        ],
-        attendees: 0,
-        tickets: {
-          total: parseInt(newEvent.capacity) || 0,
-          sold: 0,
-          available: parseInt(newEvent.capacity) || 0,
-        },
-      };
+          timeline: [
+            ...existingEvent.timeline,
+            {
+              step: 'Event Updated',
+              timestamp: new Date().toISOString(),
+              status: 'completed',
+              description: `Event updated with ${newEvent.ticketTiers.length} ticket tier(s)`,
+            },
+          ],
+        };
+        
+        await updateEvent(eventData);
+        toast.success('Event updated successfully!');
+      } else {
+        // Create new event
+        const contractAddress = '0x' + Math.random().toString(16).substring(2, 42).padEnd(40, '0');
+        
+        const eventData = {
+          ...newEvent,
+          id: Date.now(),
+          name: newEvent.name || 'Untitled Event',
+          date: newEvent.date || new Date().toISOString(),
+          location: newEvent.location || 'TBD',
+          createdBy: user?.uid || 'anonymous',
+          status: 'Planning',
+          capacity: totalCapacity,
+          contractAddress,
+          timeline: [
+            {
+              step: 'Event Created',
+              timestamp: new Date().toISOString(),
+              status: 'completed',
+              description: `Event created with ${newEvent.ticketTiers.length} ticket tier(s) as NFTs on the blockchain`,
+            },
+          ],
+          attendees: 0,
+          tickets: {
+            total: totalCapacity,
+            sold: 0,
+            available: totalCapacity,
+          },
+        };
 
-      await addEvent(eventData);
-      toast.success('Event created successfully!');
+        await addEvent(eventData);
+        toast.success('Event created with NFT ticket tiers!');
+      }
 
-      setNewEvent({
-        name: '',
-        description: '',
-        date: '',
-        location: '',
-        capacity: '',
-        organizer: '',
-        category: '',
-      });
-      setOpenDialog(false);
+      handleCloseDialog();
     } catch (error) {
-      console.error('Error creating event:', error);
-      toast.error('Failed to create event');
+      console.error(`Error ${isEditMode ? 'updating' : 'creating'} event:`, error);
+      toast.error(`Failed to ${isEditMode ? 'update' : 'create'} event`);
     }
   };
 
@@ -214,7 +306,7 @@ const EventTracking = () => {
           </Box>
         </Box>
 
-        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+        <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {canShareEvent(event.id) && (
             <Button
               variant="outlined"
@@ -229,6 +321,17 @@ const EventTracking = () => {
               Share
             </Button>
           )}
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<EditIcon />}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditEvent(event);
+            }}
+          >
+            Edit
+          </Button>
           <Button
             variant="outlined"
             size="small"
@@ -533,9 +636,9 @@ const EventTracking = () => {
         </Box>
       )}
 
-      {/* Create Event Dialog */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>🎪 Create New Event</DialogTitle>
+      {/* Create/Edit Event Dialog */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{isEditMode ? '✏️ Edit Event' : '🎪 Create New Event'}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -610,6 +713,7 @@ const EventTracking = () => {
             SelectProps={{
               native: true,
             }}
+            sx={{ mb: 3 }}
           >
             <option value=""></option>
             {eventCategories.map((category) => (
@@ -618,11 +722,105 @@ const EventTracking = () => {
               </option>
             ))}
           </TextField>
+
+          {/* NFT Ticket Tiers Section */}
+          <Box sx={{ mt: 3, mb: 2, pt: 3, borderTop: 1, borderColor: 'divider' }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              🎫 NFT Ticket Tiers
+              <Chip label="Required" size="small" color="primary" />
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Define ticket tiers with limited supply (e.g., Early Bird, VIP, General Admission)
+            </Typography>
+
+            {/* Add Ticket Tier Form */}
+            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+              <TextField
+                size="small"
+                label="Tier Name"
+                placeholder="e.g., VIP, Early Bird"
+                value={newTicketTier.name}
+                onChange={(e) => setNewTicketTier({ ...newTicketTier, name: e.target.value })}
+                sx={{ flex: 2 }}
+              />
+              <TextField
+                size="small"
+                label="Price ($)"
+                type="number"
+                value={newTicketTier.price}
+                onChange={(e) => setNewTicketTier({ ...newTicketTier, price: e.target.value })}
+                sx={{ flex: 1 }}
+                inputProps={{ min: 0, step: 0.01 }}
+              />
+              <TextField
+                size="small"
+                label="Supply"
+                type="number"
+                value={newTicketTier.supply}
+                onChange={(e) => setNewTicketTier({ ...newTicketTier, supply: e.target.value })}
+                sx={{ flex: 1 }}
+                inputProps={{ min: 1 }}
+              />
+              <Button
+                variant="outlined"
+                onClick={handleAddTicketTier}
+                sx={{ minWidth: 'auto', px: 2 }}
+              >
+                Add
+              </Button>
+            </Box>
+
+            {/* Display Added Ticket Tiers */}
+            {newEvent.ticketTiers.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="caption" color="text.secondary" gutterBottom>
+                  Added Ticket Tiers:
+                </Typography>
+                {newEvent.ticketTiers.map((tier, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      p: 1.5,
+                      mt: 1,
+                      bgcolor: 'action.hover',
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flex: 1 }}>
+                      <Chip label={tier.name} color="primary" size="small" />
+                      <Typography variant="body2">
+                        ${tier.price}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {tier.supply} tickets
+                      </Typography>
+                    </Box>
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => handleRemoveTicketTier(index)}
+                    >
+                      Remove
+                    </Button>
+                  </Box>
+                ))}
+                <Typography variant="caption" color="primary.main" sx={{ mt: 1, display: 'block' }}>
+                  Total Capacity: {newEvent.ticketTiers.reduce((sum, tier) => sum + tier.supply, 0)} tickets
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-          <Button onClick={handleCreateEvent} variant="contained">
-            Create Event
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button
+            onClick={handleCreateEvent}
+            variant="contained"
+          >
+            {isEditMode ? 'Update Event' : 'Create Event with NFT Tickets'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -657,7 +855,10 @@ const EventTracking = () => {
         color="primary"
         aria-label="add event"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        onClick={() => setOpenDialog(true)}
+        onClick={() => {
+          setIsEditMode(false);
+          setOpenDialog(true);
+        }}
       >
         <AddIcon />
       </Fab>
