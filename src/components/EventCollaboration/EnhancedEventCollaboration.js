@@ -278,12 +278,25 @@ const EnhancedEventCollaboration = ({ open, onClose, event, initialRecipient = n
   };
 
   const getAvailableRecipients = () => {
-    // Attendees/Sponsors can only message organizers
-    if (!userEventRole || userEventRole === EVENT_ROLES.VIEWER || userEventRole === EVENT_ROLES.SPONSOR) {
+    // If no role or viewer: only organizers
+    if (!userEventRole || userEventRole === EVENT_ROLES.VIEWER) {
       return teamMembers.organizers;
     }
 
-    // Volunteers and organizers can message everyone
+    // Sponsors: only organizers
+    if (userEventRole === EVENT_ROLES.SPONSOR) {
+      return teamMembers.organizers;
+    }
+
+    // Volunteers: can message organizers and volunteers only
+    if (userEventRole === EVENT_ROLES.VOLUNTEER) {
+      return [
+        ...teamMembers.organizers,
+        ...teamMembers.volunteers,
+      ].filter(member => member.id !== user.uid);
+    }
+
+    // Organizers/owners: can message everyone (including sponsors)
     return [
       ...teamMembers.organizers,
       ...teamMembers.volunteers,

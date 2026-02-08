@@ -45,7 +45,7 @@ import { getAllScheduleBlocks } from '../../services/scheduleService';
 import EventSharing from '../EventSharing/EventSharing';
 import EnhancedEventCollaboration from '../EventCollaboration/EnhancedEventCollaboration';
 import EventTeam from '../EventTeam/EventTeam';
-import { getUserEventRole } from '../../services/accessControlService';
+import { getUserEventRole, canManageCollaborators } from '../../services/accessControlService';
 import { EVENT_ROLES, PERMISSIONS, hasEventPermission } from '../../utils/roleConstants';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -132,6 +132,17 @@ const EventDetail = () => {
     if (!userEventRole) return false;
     return hasEventPermission(userEventRole, PERMISSIONS.EVENT_EDIT);
   }, [userEventRole]);
+
+  const [canManageCollabs, setCanManageCollabs] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      if (!user || !eventId) return setCanManageCollabs(false);
+      const ok = await canManageCollaborators(eventId, user.uid, userRole);
+      setCanManageCollabs(Boolean(ok));
+    };
+    check();
+  }, [user, eventId, userRole]);
 
   const handleCloseValidation = () => {
     setValidationDialogOpen(false);
@@ -444,7 +455,7 @@ const EventDetail = () => {
               </Button>
             )}
 
-            {canEditEvent && (
+            {canManageCollabs && (
               <Button
                 variant="contained"
                 startIcon={<EditIcon />}
@@ -457,7 +468,7 @@ const EventDetail = () => {
               </Button>
             )}
 
-            {canEditEvent && (
+            {canManageCollabs && (
               <Tooltip
                 title={allChecksPassed ? 'All requirements met - ready to proceed' : 'Complete all requirements first'}
               >
