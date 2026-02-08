@@ -38,11 +38,31 @@ import {
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
 import { useAuth } from '../../context/AuthContext';
+import { canManageCollaborators } from '../../services/accessControlService';
 import toast from 'react-hot-toast';
 
 const OrderTracking = () => {
   const { orders, addOrder, updateOrder, setLoading } = useAppState();
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
+  const [manageMap, setManageMap] = useState({});
+
+  useEffect(() => {
+    const loadPermissions = async () => {
+      if (!user) return;
+      const events = Array.from(new Set(orders.map(o => o.eventId).filter(Boolean)));
+      const map = {};
+      await Promise.all(events.map(async (ev) => {
+        try {
+          const ok = await canManageCollaborators(ev, user.uid, userRole);
+          map[ev] = Boolean(ok);
+        } catch (e) {
+          map[ev] = false;
+        }
+      }));
+      setManageMap(map);
+    };
+    loadPermissions();
+  }, [orders, user, userRole]);
   const [openDialog, setOpenDialog] = useState(false);
   const [tabValue, setTabValue] = useState(0);
   const [newOrder, setNewOrder] = useState({
@@ -271,7 +291,7 @@ const OrderTracking = () => {
         </Box>
 
         <Box sx={{ mt: 2 }}>
-          {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
+          {order.status !== 'Delivered' && order.status !== 'Cancelled' && (manageMap[order.eventId]) && (
             <Button
               variant="outlined"
               size="small"

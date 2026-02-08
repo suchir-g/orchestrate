@@ -43,6 +43,7 @@ import {
   getEventCollaborators,
   updateEventVisibility,
   generateEventInviteLink,
+  canManageCollaborators,
 } from '../../services/accessControlService';
 import {
   EVENT_ROLES,
@@ -83,6 +84,27 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
       setUserEventRole(role);
     };
     loadRole();
+  }, [event, user, userRole]);
+
+  // Centralized collaborator management permission
+  const [canManage, setCanManage] = useState(false);
+  useEffect(() => {
+    const loadCanManage = async () => {
+      if (!event || !user) {
+        setCanManage(false);
+        return;
+      }
+      // Event creator should always be able to manage collaborators
+      if (event.createdBy === user.uid) {
+        setCanManage(true);
+        return;
+      }
+
+      const allowed = await canManageCollaborators(event.id, user.uid, userRole);
+      setCanManage(Boolean(allowed));
+    };
+
+    loadCanManage();
   }, [event, user, userRole]);
 
   const loadCollaborators = async () => {
@@ -233,7 +255,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
               placeholder="colleague@example.com"
               value={newUserEmail}
               onChange={(e) => setNewUserEmail(e.target.value)}
-              disabled={loading || !isOwner}
+              disabled={loading || !canManage}
             />
             <FormControl sx={{ minWidth: 150 }}>
               <InputLabel>Role</InputLabel>
@@ -241,7 +263,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
                 value={newUserRole}
                 label="Role"
                 onChange={(e) => setNewUserRole(e.target.value)}
-                disabled={loading || !isOwner}
+                disabled={loading || !canManage}
               >
                 <MenuItem value={EVENT_ROLES.ORGANIZER}>{EVENT_ROLE_LABELS[EVENT_ROLES.ORGANIZER]}</MenuItem>
                 <MenuItem value={EVENT_ROLES.VOLUNTEER}>{EVENT_ROLE_LABELS[EVENT_ROLES.VOLUNTEER]}</MenuItem>
@@ -255,7 +277,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={handleAddCollaborator}
-            disabled={loading || !isManager || !newUserEmail.trim()}
+            disabled={loading || !canManage || !newUserEmail.trim()}
             fullWidth
           >
             Add Collaborator
@@ -281,7 +303,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
                   variant="outlined"
                   startIcon={<CopyIcon />}
                   onClick={() => handleCopyInviteLink(role)}
-                  disabled={!isManager}
+                  disabled={!canManage}
                 >
                   {EVENT_ROLE_LABELS[role]} Link
                 </Button>
@@ -316,7 +338,7 @@ const EventSharing = ({ open, onClose, event, onUpdate }) => {
                     size="small"
                     sx={{ mr: 1 }}
                   />
-                  {isManager && (
+                  {canManage && (
                     <ListItemSecondaryAction>
                       <IconButton
                         edge="end"

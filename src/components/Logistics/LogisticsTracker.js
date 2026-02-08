@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Typography,
@@ -38,11 +38,13 @@ import {
 } from '@mui/icons-material';
 import { useAppState } from '../../context/AppStateContext';
 import { useAuth } from '../../context/AuthContext';
+import { canManageCollaborators } from '../../services/accessControlService';
 import toast from 'react-hot-toast';
 
 const LogisticsTracker = () => {
   const { orders, addOrder, updateOrder } = useAppState();
   const { user } = useAuth();
+  const { userRole } = useAuth();
   const [mainTabValue, setMainTabValue] = useState(0);
   const [orderTabValue, setOrderTabValue] = useState(0);
   const [openDialog, setOpenDialog] = useState(false);
@@ -109,6 +111,27 @@ const LogisticsTracker = () => {
   };
 
   const shipmentData = generateShipmentsFromOrders();
+
+  // Map of eventId -> boolean whether current user can manage collaborators
+  const [manageMap, setManageMap] = useState({});
+
+  useEffect(() => {
+    const loadPermissions = async () => {
+      if (!user) return;
+      const events = Array.from(new Set(orders.map(o => o.eventId).filter(Boolean)));
+      const map = {};
+      await Promise.all(events.map(async (ev) => {
+        try {
+          const ok = await canManageCollaborators(ev, user.uid, userRole);
+          map[ev] = Boolean(ok);
+        } catch (e) {
+          map[ev] = false;
+        }
+      }));
+      setManageMap(map);
+    };
+    loadPermissions();
+  }, [orders, user, userRole]);
 
   const handleCreateOrder = async () => {
     if (!user) {
@@ -338,7 +361,7 @@ const LogisticsTracker = () => {
         </Box>
 
         <Box sx={{ mt: 2 }}>
-          {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
+          {order.status !== 'Delivered' && order.status !== 'Cancelled' && (manageMap[order.eventId]) && (
             <Button
               variant="outlined"
               size="small"

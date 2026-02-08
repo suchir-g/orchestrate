@@ -178,6 +178,23 @@ export const hasEventAccess = async (eventId, userId, userRole, permission) => {
   }
 };
 
+/**
+ * Check if a user can manage collaborators for an event (add/remove/edit collaborators)
+ * @param {string} eventId
+ * @param {string} userId
+ * @param {string} userRole
+ * @returns {Promise<boolean>}
+ */
+export const canManageCollaborators = async (eventId, userId, userRole) => {
+  try {
+    // Reuse existing permission check for collaborator edit
+    return await hasEventAccess(eventId, userId, userRole, PERMISSIONS.COLLABORATOR_EDIT);
+  } catch (error) {
+    console.error('Error checking collaborator manage permission:', error);
+    return false;
+  }
+};
+
 // ========== COLLABORATOR MANAGEMENT ==========
 
 /**
